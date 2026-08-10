@@ -5,11 +5,16 @@ const http = require('http');
 const { Connection, PublicKey } = require('@solana/web3.js');
 
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-const connection = new Connection(RPC_URL, 'confirmed');
+const WSS_URL = process.env.SOLANA_WSS_URL || 'wss://api.mainnet-beta.solana.com';
+
+const connection = new Connection(RPC_URL, {
+    commitment: 'confirmed',
+    wsEndpoint: WSS_URL
+});
 
 const SNIPER_CONFIG = {
     amountToInvestSol: 0.05,
-    minLiquiditySol: 15,
+    minLiquiditySol: 10,
     autoTakeProfitPct: 50,
     autoStopLossPct: -25
 };
@@ -53,7 +58,7 @@ function salvarTradeNoHistorico(tradeData) {
     carregarHistorico();
 }
 
-// Servidor HTTP otimizado para servir ficheiros estáticos no Codespaces
+// Servidor do Dashboard Web
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.url === '/api/stats') {
@@ -77,11 +82,11 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
 });
 
-async function pollRealBlockchainEvents() {
+// Gestão de Posição Ativa e simulação de PnL baseada no token real detetado
+setInterval(() => {
     carregarHistorico();
-
     if (activeSnipeTrade) {
-        const variacao = (Math.random() * 55 - 22);
+        const variacao = (Math.random() * 50 - 20);
         activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
         const pnl = ((activeSnipeTrade.currentValueSol - activeSnipeTrade.investedSol) / activeSnipeTrade.investedSol) * 100;
         activeSnipeTrade.pnlPct = Number(pnl.toFixed(2));
@@ -102,36 +107,47 @@ async function pollRealBlockchainEvents() {
             activeSnipeTrade = null;
             botStats.activeTrade = null;
         }
-    } else {
-        botStats.totalScanned++;
-        try {
-            await connection.getSlot();
-            const mockRealTokens = [
-                { name: "SOL_MEME_1", mint: "So11111111111111111111111111111111111111112", liquiditySol: 18.5 },
-                { name: "REAL_AI_X", mint: "TokenReal999999SolanaNetworkMintExample", liquiditySol: 12.0 },
-                { name: "PUMP_GEM", mint: "PumpTokenFakeMintAddress123456789Sol", liquiditySol: 42.1 }
-            ];
-            const token = mockRealTokens[Math.floor(Math.random() * mockRealTokens.length)];
+    }
+}, 3000);
 
-            if (token.liquiditySol >= SNIPER_CONFIG.minLiquiditySol) {
-                botStats.approvedTokens++;
-                activeSnipeTrade = {
-                    name: token.name,
-                    mint: token.mint,
-                    investedSol: SNIPER_CONFIG.amountToInvestSol,
-                    currentValueSol: SNIPER_CONFIG.amountToInvestSol,
-                    pnlPct: 0,
-                    entryTime: new Date().toLocaleTimeString()
-                };
-                botStats.activeTrade = activeSnipeTrade;
-            } else {
-                botStats.rejectedTokens++;
-            }
-        } catch (error) {
-            // Silencia erros de rede temporários
-        }
+// ESCUTA REAL DE LANÇAMENTOS NA MAINNET VIA HHELIUS WSS (Pump.fun Program)
+function iniciarEscutaReal() {
+    const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+
+    try {
+        connection.onLogs(
+            new PublicKey(PUMP_FUN_PROGRAM),
+            (updatedAccountInfo) => {
+                botStats.totalScanned++;
+                const logs = updatedAccountInfo.logs;
+                const isCreate = logs.some(l => l.includes("Initialize") || l.includes("Create"));
+
+                if (isCreate) {
+                    botStats.approvedTokens++;
+                    if (!activeSnipeTrade) {
+                        const tokenMintHash = updatedAccountInfo.signature;
+                        activeSnipeTrade = {
+                            name: "PUMP_" + tokenMintHash.slice(0, 5).toUpperCase(),
+                            mint: tokenMintHash,
+                            investedSol: SNIPER_CONFIG.amountToInvestSol,
+                            currentValueSol: SNIPER_CONFIG.amountToInvestSol,
+                            pnlPct: 0,
+                            entryTime: new Date().toLocaleTimeString()
+                        };
+                        botStats.activeTrade = activeSnipeTrade;
+                        console.log(`🚀 Novo token real detetado na Mainnet: ${activeSnipeTrade.name}`);
+                    }
+                } else {
+                    botStats.rejectedTokens++;
+                }
+            },
+            "confirmed"
+        );
+        console.log("📡 Escuta de novos blocos e tokens reais ativa via Helius WSS.");
+    } catch (e) {
+        console.error("Erro na subscrição WSS:", e.message);
     }
 }
 
-setInterval(pollRealBlockchainEvents, 4000);
-pollRealBlockchainEvents();
+carregarHistorico();
+iniciarEscutaReal();
