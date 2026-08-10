@@ -10,16 +10,16 @@ let activePosition = null;
 
 function executarCiclo() {
     console.log("\n----------------------------------------");
-    console.log(`[EXECUÇÃO] Hora: ${new Date().toLocaleTimeString()}`);
+    console.log(`[EXECUÇÃO LOCAL] Hora: ${new Date().toLocaleTimeString()}`);
     
-    // Simula variação de preço para cada token
+    // Simula variação de preço para cada token internamente
     const oportunidades = WATCHLIST.map(token => {
         const variacao = (Math.random() * 10 - 4.8); // Entre -4.8% e +5.2%
         const quantidade = Math.floor(token.basePrice * (1 + variacao / 100));
         return { symbol: token.symbol, outAmount: quantidade };
     });
 
-    // Encontra o melhor
+    // Encontra o melhor token do ciclo
     oportunidades.sort((a, b) => b.outAmount - a.outAmount);
     const melhor = oportunidades[0];
 
