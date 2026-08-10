@@ -16,26 +16,37 @@ const WATCHLIST = [
 const AMOUNT_SOL_TO_TRADE = 0.01;
 let activePosition = null;
 
-function getJSON(url) {
-    return new Promise((resolve, reject) => {
+function fetchQuote(url) {
+    return new Promise((resolve) => {
         const options = {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Accept': 'application/json'
-            }
+            },
+            timeout: 5000 // Timeout de segurança de 5 segundos
         };
 
-        https.get(url, options, (res) => {
+        const req = https.get(url, options, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
-                    resolve(JSON.parse(data));
+                    const parsed = JSON.parse(data);
+                    resolve({ success: true, data: parsed });
                 } catch (e) {
-                    reject(new Error("Erro ao fazer parse do JSON"));
+                    resolve({ success: false, error: "Parse error" });
                 }
             });
-        }).on('error', (err) => reject(err));
+        });
+
+        req.on('error', (err) => {
+            resolve({ success: false, error: err.message });
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ success: false, error: "Timeout" });
+        });
     });
 }
 
@@ -43,30 +54,28 @@ async function scanAndSelectPromisingToken() {
     try {
         console.log("\n==============================================");
         console.log(`[SCANNER MULTI-TOKEN] Analisando mercado: ${new Date().toLocaleTimeString()}`);
-        console.log("==============================================");
+        console.log("==============================================\n");
 
         const amountInLamports = Math.floor(AMOUNT_SOL_TO_TRADE * 1e9);
         const marketOpportunities = [];
 
         for (const token of WATCHLIST) {
-            try {
-                const url = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${token.mint}&amount=${amountInLamports}&slippageBps=50`;
-                const quote = await getJSON(url);
+            const url = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${token.mint}&amount=${amountInLamports}&slippageBps=50`;
+            const result = await fetchQuote(url);
 
-                if (quote && !quote.error && quote.outAmount) {
-                    marketOpportunities.push({
-                        symbol: token.symbol,
-                        mint: token.mint,
-                        outAmount: Number(quote.outAmount),
-                        priceImpactPct: Number(quote.priceImpactPct || 0)
-                    });
-                }
-            } catch (err) {
-                // Modo Fallback / Simulação caso a rede bloqueie a API externa no ambiente atual
-                // Gera uma variação controlada para testes locais contínuos
+            if (result.success && result.data && !result.data.error && result.data.outAmount) {
+                marketOpportunities.push({
+                    symbol: token.symbol,
+                    mint: token.mint,
+                    outAmount: Number(result.data.outAmount),
+                    priceImpactPct: Number(result.data.priceImpactPct || 0),
+                    isSimulatedFallback: false
+                });
+            } else {
+                // Ativa o Fallback inteligente para este token específico caso a API esteja bloqueada no ambiente
                 const simulatedBaseAmounts = { USDC: 180000000, USDT: 180500000, BONK: 150000000000, WIF: 45000000 };
                 const base = simulatedBaseAmounts[token.symbol] || 100000000;
-                const randomVariation = (Math.random() * 10 - 4.8); // Variação entre -4.8% e +5.2%
+                const randomVariation = (Math.random() * 10 - 4.8); // Oscilação entre -4.8% e +5.2%
                 const calculatedAmount = Math.floor(base * (1 + randomVariation / 100));
 
                 marketOpportunities.push({
@@ -84,12 +93,13 @@ async function scanAndSelectPromisingToken() {
             return;
         }
 
+        // Ordena para encontrar o token com maior retorno estimado
         marketOpportunities.sort((a, b) => b.outAmount - a.outAmount);
         const bestCandidate = marketOpportunities[0];
 
-        console.log(`🏆 [TOKEN MAIS PROMISSOR SELECIONADO]: ${bestCandidate.symbol} ${bestCandidate.isSimulatedFallback ? '(Modo Simulação de Rede)' : ''}`);
+        console.log(`🏆 [TOKEN MAIS PROMISSOR SELECIONADO]: ${bestCandidate.symbol} ${bestCandidate.isSimulatedFallback ? '(Modo Simulação de Mercado)' : ''}`);
         console.log(`- Retorno estimado: ${bestCandidate.outAmount} unidades para ${AMOUNT_SOL_TO_TRADE} SOL`);
-        console.log(`- Impacto no preço: ${bestCandidate.priceImpactPct}%`);
+        console.log(`- Impacto no preço: ${bestCandidate.priceImpactPct}%\n`);
 
         if (!activePosition) {
             activePosition = {
@@ -99,23 +109,23 @@ async function scanAndSelectPromisingToken() {
                 investedSol: AMOUNT_SOL_TO_TRADE,
                 entryTime: new Date()
             };
-            console.log(`🟢 [PAPER TRADING] Posição aberta em ${bestCandidate.symbol}!`);
+            console.log(`🟢 [PAPER TRADING] Posição aberta em ${bestCandidate.symbol}!\n`);
         } else {
             if (activePosition.mint === bestCandidate.mint) {
                 const pnl = ((bestCandidate.outAmount - activePosition.entryOutAmount) / activePosition.entryOutAmount) * 100;
-                console.log(`📊 [MONITORANDO ${activePosition.symbol}] PnL Atual: ${pnl.toFixed(2)}%`);
+                console.log(`📊 [MONITORANDO ${activePosition.symbol}] PnL Atual: ${pnl.toFixed(2)}%\n`);
                 
                 if (pnl >= 5 || pnl <= -3) {
-                    console.log(`🏁 Fechando posição simulada para ${activePosition.symbol} (Alvo atingido ou Stop Loss).`);
+                    console.log(`🏁 Fechando posição simulada para ${activePosition.symbol} (Alvo atingido ou Stop Loss).\n`);
                     activePosition = null;
                 }
             } else {
-                console.log(`⏳ Aguardando ciclo da posição atual (${activePosition.symbol})...`);
+                console.log(`⏳ Aguardando ciclo da posição atual (${activePosition.symbol})...\n`);
             }
         }
 
     } catch (error) {
-        console.error("Erro no scanner multi-token:", error);
+        console.error("Erro crítico no scanner:", error);
     }
 }
 
