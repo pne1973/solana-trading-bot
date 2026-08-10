@@ -2,121 +2,104 @@ require('dotenv').config();
 
 // Configurações do Auto Sniper (Estilo GMGN)
 const SNIPER_CONFIG = {
-    amountToInvestSol: 0.05,       // Quantidade de SOL alocada por snipe automático
-    minLiquiditySol: 15,           // Mínimo de SOL exigido no pool de liquidez
-    requireLpBurned: true,         // Exigir que o LP esteja queimado/bloqueado
-    maxBuyTaxPct: 0,               // Rejeitar tokens com taxa de compra
-    autoTakeProfitPct: 45,         // Alvo de lucro automático (+45%)
-    autoStopLossPct: -20           // Limite de perda automática (-20%)
+    amountToInvestSol: 0.05,       // SOL alocado por snipe
+    minLiquiditySol: 15,           // Mínimo de SOL no pool
+    autoTakeProfitPct: 50,         // Alvo de lucro (+50%)
+    autoStopLossPct: -25           // Stop Loss (-25%)
 };
 
 let activeSnipeTrade = null;
 
-function runGmgnStyleSniperEngine() {
+// Gerador dinâmico de Meme Tokens (Simula o fluxo de novos pools na Pump.fun / Raydium)
+function gerarNovoMemeTokenAleatorio() {
+    const prefixos = ["MOON", "PEPE", "SOL", "CAT", "DOG", "AI", "CHAD", "BABY", "ELON", "SAFE"];
+    const sufixos = ["INU", "WIF", "PEPE", "AI", "GEM", "MOON", "ROCKET", "BOME"];
+    
+    const nomeAleatorio = prefixos[Math.floor(Math.random() * prefixos.length)] + "_" + 
+                          sufixos[Math.floor(Math.random() * sufixos.length)] + "_" + 
+                          Math.floor(Math.random() * 900 + 100);
+
+    // Simula dados reais obtidos on-chain do pool de liquidez
+    return {
+        name: nomeAleatorio,
+        mint: "Token" + Math.random().toString(36).substring(2, 15) + "Sol",
+        liquiditySol: Number((Math.random() * 50 + 5).toFixed(2)), // Entre 5 e 55 SOL de liquidez
+        lpBurned: Math.random() > 0.2, // 80% de chance de ter o LP queimado (seguro)
+        buyTax: Math.random() > 0.9 ? 5 : 0 // 10% de chance de ter taxa maliciosa
+    };
+}
+
+function runAutoSniperEngine() {
     console.log("\n==================================================");
-    console.log(`[GMGN SNIPER ENGINE] Escutando novos pools: ${new Date().toLocaleTimeString()}`);
+    console.log(`[AUTO-SNIPER RADAR] Procurando novos pools: ${new Date().toLocaleTimeString()}`);
     console.log("==================================================");
 
-    // Simulação de fluxo de novos meme tokens detetados no mempool / Pump.fun / Raydium
-    const rawMarketStream = [
-        { 
-            name: "PEPE_SOL", 
-            mint: "EPepeSolMintAddressMock1111111111111111111", 
-            liquiditySol: 28.5, 
-            lpBurned: true, 
-            buyTax: 0, 
-            smartMoneyInflows: 4 
-        },
-        { 
-            name: "SCAM_COIN", 
-            mint: "EScamCoinMintAddressMock2222222222222222222", 
-            liquiditySol: 4.2,  
-            lpBurned: false, 
-            buyTax: 99, 
-            smartMoneyInflows: 0 
-        },
-        { 
-            name: "SOL_AI", 
-            mint: "ESolAiMintAddressMock33333333333333333333", 
-            liquiditySol: 45.0, 
-            lpBurned: true, 
-            buyTax: 0, 
-            smartMoneyInflows: 8 
-        }
-    ];
-
-    // Seleciona um evento de token aleatório do fluxo para testar o filtro do sniper
-    const detectedToken = rawMarketStream[Math.floor(Math.random() * rawMarketStream.length)];
-
-    console.log(`🚀 [NOVO TOKEN ENCONTRADO]: ${detectedToken.name}`);
-    console.log(`   - Endereço Mint: ${detectedToken.mint}`);
-    console.log(`   - Liquidez do Pool: ${detectedToken.liquiditySol} SOL`);
-    console.log(`   - LP Queimado: ${detectedToken.lpBurned ? 'Sim (Seguro)' : 'Não (Risco)'}`);
-    console.log(`   - Smart Money Entradas: ${detectedToken.smartMoneyInflows} carteiras`);
-
-    // --- FILTROS DE SEGURANÇA E AUDITORIA (Estilo GMGN Audit) ---
-    if (detectedToken.liquiditySol < SNIPER_CONFIG.minLiquiditySol) {
-        console.log(`🛡️ [SNIPER REJEITADO] Liquidez abaixo do limiar seguro (${SNIPER_CONFIG.minLiquiditySol} SOL).`);
+    // Se já tivermos uma posição aberta, o foco é gerir o trade atual antes de snipar outro
+    if (activeSnipeTrade) {
         monitorActiveTrade();
         return;
     }
 
-    if (SNIPER_CONFIG.requireLpBurned && !detectedToken.lpBurned) {
-        console.log(`🛡️ [SNIPER REJEITADO] Alerta de Rug Pull: LP não queimado.`);
-        monitorActiveTrade();
+    // O bot "escuta" e captura um novo token recém-criado
+    const tokenDetectado = gerarNovoMemeTokenAleatorio();
+
+    console.log(`🚀 [NOVO TOKEN DETETADO NO MEMPOOL]: ${tokenDetectado.name}`);
+    console.log(`   - Mint: ${tokenDetectado.mint}`);
+    console.log(`   - Liquidez Inicial: ${tokenDetectado.liquiditySol} SOL`);
+    console.log(`   - LP Queimado: ${tokenDetectado.lpBurned ? '✅ Sim (Seguro)' : '❌ Não (Risco)'}`);
+    console.log(`   - Taxa de Compra: ${tokenDetectado.buyTax}%`);
+
+    // --- FILTROS DE SEGURANÇA DO SNIPER (Anti-Rug) ---
+    if (tokenDetectado.liquiditySol < SNIPER_CONFIG.minLiquiditySol) {
+        console.log(`🛡️ [REJEITADO] Liquidez abaixo do mínimo configurado (${SNIPER_CONFIG.minLiquiditySol} SOL).`);
         return;
     }
 
-    if (detectedToken.buyTax > SNIPER_CONFIG.maxBuyTaxPct) {
-        console.log(`🛡️ [SNIPER REJEITADO] Taxa de compra abusiva detetada (${detectedToken.buyTax}%).`);
-        monitorActiveTrade();
+    if (!tokenDetectado.lpBurned) {
+        console.log(`🛡️ [REJEITADO] Alerta de golpe: Pool de liquidez não foi queimado.`);
         return;
     }
 
-    console.log(`✨ [APROVADO PELO FILTRO]: ${detectedToken.name} passou em todos os parâmetros de segurança!`);
-
-    // --- EXECUÇÃO DA COMPRA (SNIPE) ---
-    if (!activeSnipeTrade) {
-        activeSnipeTrade = {
-            name: detectedToken.name,
-            mint: detectedToken.mint,
-            investedSol: SNIPER_CONFIG.amountToInvestSol,
-            currentValueSol: SNIPER_CONFIG.amountToInvestSol,
-            entryTime: new Date()
-        };
-        console.log(`🎯 [AUTO-BUY EXECUTADO] Comprados ${SNIPER_CONFIG.amountToInvestSol} SOL de ${detectedToken.name} instantaneamente!`);
-    } else {
-        console.log(`⏳ Já existe uma posição aberta em ${activeSnipeTrade.name}. Ignorando novo sinal.`);
+    if (tokenDetectado.buyTax > 0) {
+        console.log(`🛡️ [REJEITADO] Token taxado detetado. Ignorando.`);
+        return;
     }
 
-    monitorActiveTrade();
+    console.log(`✨ [APROVADO] ${tokenDetectado.name} passou nos filtros de segurança do GMGN!`);
+
+    // --- EXECUÇÃO DO SNIPE AUTOMÁTICO ---
+    activeSnipeTrade = {
+        name: tokenDetectado.name,
+        mint: tokenDetectado.mint,
+        investedSol: SNIPER_CONFIG.amountToInvestSol,
+        currentValueSol: SNIPER_CONFIG.amountToInvestSol
+    };
+    console.log(`🎯 [COMPRA EXECUTADA] Snipados ${SNIPER_CONFIG.amountToInvestSol} SOL em ${tokenDetectado.name} com sucesso!`);
 }
 
 function monitorActiveTrade() {
-    if (!activeSnipeTrade) return;
-
     console.log(`\n--------------------------------------------------`);
-    console.log(`📊 [GERINDO POSIÇÃO ATIVA]: ${activeSnipeTrade.name}`);
+    console.log(`📊 [GERINDO POSIÇÃO DO SNIPE]: ${activeSnipeTrade.name}`);
 
-    // Simula a volatilidade agressiva de preço do token snipado
-    const swingPct = (Math.random() * 50 - 20); // Variação entre -20% e +30% por ciclo
-    activeSnipeTrade.currentValueSol *= (1 + swingPct / 100);
+    // Simula a oscilação de preço altamente volátil típica de um meme token recém-lançado
+    const variacaoPreco = (Math.random() * 60 - 22); // Variação entre -22% e +38% por ciclo
+    activeSnipeTrade.currentValueSol *= (1 + variacaoPreco / 100);
 
-    const pnlPct = ((activeSnipeTrade.currentValueSol - SNIPER_CONFIG.amountToInvestSol) / SNIPER_CONFIG.amountToInvestSol) * 100;
-    console.log(`   - PnL Atual: ${pnlPct.toFixed(2)}% (Valor avaliado: ${activeSnipeTrade.currentValueSol.toFixed(4)} SOL)`);
+    const pnlPct = ((activeSnipeTrade.currentValueSol - SNIPER_CONFIG.investedSol) / SNIPER_CONFIG.investedSol) * 100;
+    console.log(`   - PnL Atual: ${pnlPct.toFixed(2)}% (Valor: ${activeSnipeTrade.currentValueSol.toFixed(4)} SOL)`);
 
-    // Gestão de Saída (Take Profit / Stop Loss)
+    // Verificação de Saída (Take Profit / Stop Loss)
     if (pnlPct >= SNIPER_CONFIG.autoTakeProfitPct) {
-        console.log(`🎉 [TAKE PROFIT ATINGIDO] Venda automática efetuada em ${activeSnipeTrade.name} com lucro de +${pnlPct.toFixed(2)}%!`);
+        console.log(`🎉 [TAKE PROFIT ATINGIDO!] Vendendo ${activeSnipeTrade.name} com lucro de +${pnlPct.toFixed(2)}%!`);
         activeSnipeTrade = null;
     } else if (pnlPct <= SNIPER_CONFIG.autoStopLossPct) {
-        console.log(`🛑 [STOP LOSS ATINGIDO] Cortando perdas em ${activeSnipeTrade.name} (${pnlPct.toFixed(2)}%) para proteger o capital.`);
+        console.log(`🛑 [STOP LOSS ATINGIDO!] Cortando perdas em ${activeSnipeTrade.name} (${pnlPct.toFixed(2)}%).`);
         activeSnipeTrade = null;
     } else {
-        console.log(`⏳ Posição segura. Aguardando próximo bloco...`);
+        console.log(`⏳ Posição mantida. A acompanhar o próximo bloco...`);
     }
 }
 
-// Executa o motor do sniper a cada 6 segundos
-setInterval(runGmgnStyleSniperEngine, 6000);
-runGmgnStyleSniperEngine();
+// Executa o radar de novos tokens a cada 4 segundos
+setInterval(runAutoSniperEngine, 4000);
+runAutoSniperEngine();
