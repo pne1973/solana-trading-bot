@@ -14,17 +14,23 @@ const WATCHLIST = [
 const AMOUNT_SOL_TO_TRADE = 0.01;
 let activePosition = null;
 
-// Função auxiliar usando o módulo HTTPS nativo do Node.js
 function getJSON(url) {
     return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
+        const options = {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Accept': 'application/json'
+            }
+        };
+
+        https.get(url, options, (res) => {
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
                     resolve(JSON.parse(data));
                 } catch (e) {
-                    reject(e);
+                    reject(new Error("Erro ao fazer parse do JSON: " + data));
                 }
             });
         }).on('error', (err) => reject(err));
