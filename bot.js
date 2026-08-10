@@ -5,17 +5,20 @@ const { Connection } = require('@solana/web3.js');
 const connection = new Connection(process.env.RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com', 'confirmed');
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-// Exemplo: USDC ou o token desejado
-const TOKEN_TARGET_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; 
+const TOKEN_TARGET_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Ex: USDC
 
-async function simulateTrading() {
+// Variáveis de controle do Paper Trading
+let activePosition = null; 
+const AMOUNT_SOL_TO_TRADE = 0.01; // 0.01 SOL por operação simulada
+const TAKE_PROFIT_PERCENT = 10;   // Vender se subir 10%
+const STOP_LOSS_PERCENT = -5;     // Vender se cair 5%
+
+async function simulateTradingCycle() {
     try {
-        console.log("--- INICIANDO CICLO DE SIMULAÇÃO (PAPER TRADING) ---");
-        const amountInLamports = 10000000; // Simulando o uso de 0.01 SOL
-        const solAmountDecimal = amountInLamports / 1e9;
+        console.log("\n--- NOVO CICLO DE MONITORAMENTO (PAPER TRADING) ---");
+        const amountInLamports = Math.floor(AMOUNT_SOL_TO_TRADE * 1e9);
 
-        console.log(`Buscando dados reais de preço para ${solAmountDecimal} SOL...`);
-        
+        // Busca cotação atual na Jupiter API
         const quoteResponse = await (
             await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${TOKEN_TARGET_MINT}&amount=${amountInLamports}&slippageBps=50`)
         ).json();
@@ -25,23 +28,45 @@ async function simulateTrading() {
             return;
         }
 
-        const outAmount = quoteResponse.outAmount;
-        console.log("\n[DADOS REAIS OBTIDOS DA REDE]:");
-        console.log(`- Você investiria: ${solAmountDecimal} SOL`);
-        console.log(`- Receberia aproximadamente: ${outAmount} unidades do token`);
-        console.log(`- Rota utilizada: ${quoteResponse.routePlan.length} DEX(s) envolvida(s)`);
+        const currentOutAmount = Number(quoteResponse.outAmount);
         
-        // Simulação de acompanhamento de preço / PnL fictício
-        console.log("\n[MODO SIMULAÇÃO ATIVO]: Nenhuma ordem real foi enviada para a blockchain.");
-        console.log("--------------------------------------------------\n");
+        // Se não temos uma posição aberta, "compramos" (registramos o preço de entrada)
+        if (!activePosition) {
+            activePosition = {
+                entryAmountTokens: currentOutAmount,
+                investedSol: AMOUNT_SOL_TO_TRADE,
+                timestamp: new Date()
+            };
+            console.log(`[COMPRA SIMULADA] Entrou na posição com ${AMOUNT_SOL_TO_TRADE} SOL.`);
+            console.log(`- Tokens adquiridos (estimados): ${currentOutAmount}`);
+            console.log(`- Horário: ${activePosition.timestamp.toLocaleTimeString()}`);
+            return;
+        }
+
+        // Se já temos uma posição aberta, calculamos o PnL (Lucro/Prejuízo)
+        const pnlPercentage = ((currentOutAmount - activePosition.entryAmountTokens) / activePosition.entryAmountTokens) * 100;
+        
+        console.log(`[POSIÇÃO ATIVA] Monitorando...`);
+        console.log(`- Variação atual: ${pnlPercentage.toFixed(2)}%`);
+
+        // Verifica regras de saída (Take Profit ou Stop Loss)
+        if (pnlPercentage >= TAKE_PROFIT_PERCENT) {
+            console.log(`🎯 [TAKE PROFIT ATINGIDO!] Lucro de +${pnlPercentage.toFixed(2)}%. Fechando posição simulada.`);
+            activePosition = null; // Reseta a posição
+        } else if (pnlPercentage <= STOP_LOSS_PERCENT) {
+            console.log(`🛑 [STOP LOSS ATINGIDO!] Prejuízo de ${pnlPercentage.toFixed(2)}%. Fechando posição simulada.`);
+            activePosition = null; // Reseta a posição
+        } else {
+            console.log(`⏳ Mantendo posição aberta. Aguardando oscilação de preço...`);
+        }
 
     } catch (error) {
-        console.error("Erro na simulação:", error);
+        console.error("Erro no ciclo de simulação:", error);
     }
 }
 
-// Executa a simulação a cada 30 segundos para testar com dados reais do mercado
-setInterval(simulateTrading, 30000);
+// Executa o ciclo a cada 20 segundos
+setInterval(simulateTradingCycle, 20000);
 
-// Executa imediatamente na primeira vez
-simulateTrading();
+// Executa imediatamente na inicialização
+simulateTradingCycle();
