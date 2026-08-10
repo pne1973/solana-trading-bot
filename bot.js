@@ -1,178 +1,97 @@
-// --- BOT DE SIMULAÇÃO LOCAL (SANDBOX) ---
-const WATCHLIST = [
-    { symbol: "USDC", basePrice: 180000000 },
-    { symbol: "USDT", basePrice: 180500000 },
-    { symbol: "BONK", basePrice: 150000000000 },
-    { symbol: "WIF", basePrice: 45000000 }
-];
+require('dotenv').config();
+const { Connection, Keypair, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 
-let activePosition = null;
-
-function executarCiclo() {
-    console.log("\n----------------------------------------");
-    console.log(`[EXECUÇÃO LOCAL] Hora: ${new Date().toLocaleTimeString()}`);require('dotenv').config();
-const { Connection, PublicKey } = require('@solana/web3.js');
-const https = require('https');
-
-// Conexão oficial com a blockchain Solana
+// Configuração da Rede (RPC)
 const connection = new Connection(process.env.RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com', 'confirmed');
 
-const SOL_MINT = "So11111111111111111111111111111111111111112";
+// Parâmetros de Configuração do Sniper
+const CONFIG = {
+    amountToSnipe: 0.05,        // Quantidade de SOL a investir por snipe
+    minLiquiditySol: 10,        // Mínimo de SOL de liquidez no pool para entrar
+    maxBuyTax: 0,               // Rejeitar se houver taxa de compra
+    autoSellProfitPct: 50,      // Take Profit em +50%
+    autoSellLossPct: -25        // Stop Loss em -25%
+};
 
-// Watchlist de tokens reais na Solana (Mint Addresses)
-const WATCHLIST = [
-    { symbol: "USDC", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
-    { symbol: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" },
-    { symbol: "BONK", mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
-    { symbol: "WIF", mint: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm" }
-];
+let activeSnipePosition = null;
 
-const AMOUNT_SOL_TO_TRADE = 0.01;
-let activePosition = null;
-
-// Função robusta de requisição HTTP com tratamento de erro isolado
-function fetchJupiterQuote(url) {
-    return new Promise((resolve) => {
-        const options = {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                'Accept': 'application/json'
-            },
-            timeout: 6000
-        };
-
-        const req = https.get(url, options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => data += chunk);
-            res.on('end', () => {
-                try {
-                    const parsed = JSON.parse(data);
-                    resolve({ success: true, data: parsed });
-                } catch (e) {
-                    resolve({ success: false, error: "Parse error" });
-                }
-            });
-        });
-
-        req.on('error', (err) => resolve({ success: false, error: err.message }));
-        req.on('timeout', () => { req.destroy(); resolve({ success: false, error: "Timeout" }); });
-    });
-}
-
-async function scanAndSelectRealToken() {
+// Simulador de Evento de Detecção de Novo Meme Token (Estilo WebSocket / gRPC New Pool)
+function simulateMemeTokenLaunchListener() {
     console.log("\n==============================================");
-    console.log(`[SCANNER REAL] Consultando mercado Solana: ${new Date().toLocaleTimeString()}`);
+    console.log(`[AUTO-SNIPER] À escuta de novos Meme Tokens (Mempool/DEX)...`);
     console.log("==============================================");
 
-    const amountInLamports = Math.floor(AMOUNT_SOL_TO_TRADE * 1e9);
-    const marketOpportunities = [];
-    let successCount = 0;
+    // Simula a chegada de um novo token recém-criado na blockchain
+    const mockNewTokenEvents = [
+        { name: "PUMP_COIN", mint: "TokenMintMock111111111111111111111111111", initialLiquiditySol: 25, isLpBurned: true, creatorVerified: true },
+        { name: "MOON_DOG", mint: "TokenMintMock222222222222222222222222222", initialLiquiditySol: 5, isLpBurned: false, creatorVerified: false }, // Vai falhar no filtro
+        { name: "AI_MEME", mint: "TokenMintMock333333333333333333333333333", initialLiquiditySol: 40, isLpBurned: true, creatorVerified: true }
+    ];
 
-    for (const token of WATCHLIST) {
-        const url = `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${token.mint}&amount=${amountInLamports}&slippageBps=50`;
-        const result = await fetchJupiterQuote(url);
+    // Pega aleatoriamente um evento simulado de lançamento recente
+    const detectedToken = mockNewTokenEvents[Math.floor(Math.random() * mockNewTokenEvents.length)];
 
-        if (result.success && result.data && !result.data.error && result.data.outAmount) {
-            successCount++;
-            marketOpportunities.push({
-                symbol: token.symbol,
-                mint: token.mint,
-                outAmount: Number(result.data.outAmount),
-                priceImpactPct: Number(result.data.priceImpactPct || 0),
-                isReal: true
-            });
-        } else {
-            // Fallback temporário apenas para o token que falhar caso o firewall bloqueie intermitentemente
-            const basePrices = { USDC: 180000000, USDT: 180500000, BONK: 150000000000, WIF: 45000000 };
-            const base = basePrices[token.symbol] || 100000000;
-            const varSimulada = (Math.random() * 4 - 2);
-            
-            marketOpportunities.push({
-                symbol: token.symbol,
-                mint: token.mint,
-                outAmount: Math.floor(base * (1 + varSimulada / 100)),
-                priceImpactPct: 0.1,
-                isReal: false
-            });
-        }
+    console.log(`🚀 [NOVO TOKEN DETETADO]: ${detectedToken.name} (${detectedToken.mint.slice(0, 6)}...)`);
+    console.log(`- Liquidez Inicial: ${detectedToken.initialLiquiditySol} SOL`);
+    console.log(`- LP Queimado: ${detectedToken.isLpBurned ? '✅ Sim' : '❌ Não'}`);
+
+    // --- FILTROS DE SEGURANÇA (Anti-Rug / Estilo GMGN) ---
+    if (detectedToken.initialLiquiditySol < CONFIG.minLiquiditySol) {
+        console.log(`🛡️ [REJEITADO] Liquidez abaixo do limite mínimo (${CONFIG.minLiquiditySol} SOL).`);
+        return;
     }
 
-    // Seleciona o token mais promissor com base no maior retorno
-    marketOpportunities.sort((a, b) => b.outAmount - a.outAmount);
-    const bestCandidate = marketOpportunities[0];
+    if (!detectedToken.isLpBurned) {
+        console.log(`🛡️ [REJEITADO] Alerta de risco: LP não queimado (Possível Rug Pull).`);
+        return;
+    }
 
-    console.log(`🏆 [MAIS PROMISSOR]: ${bestCandidate.symbol} ${bestCandidate.isReal ? '🟢 (Dados Reais da Jupiter)' : '🟡 (Modo Híbrido)'}`);
-    console.log(`- Retorno estimado: ${bestCandidate.outAmount.toLocaleString()} unidades para ${AMOUNT_SOL_TO_TRADE} SOL`);
-    console.log(`- Impacto no preço: ${bestCandidate.priceImpactPct}%`);
+    console.log(`✨ [APROVADO] ${detectedToken.name} passou em todos os filtros de segurança!`);
 
-    // Gestão da Posição (Paper Trading)
-    if (!activePosition) {
-        activePosition = {
-            symbol: bestCandidate.symbol,
-            mint: bestCandidate.mint,
-            entryOutAmount: bestCandidate.outAmount,
-            investedSol: AMOUNT_SOL_TO_TRADE,
+    // --- EXECUÇÃO DO SNIPE (Automático) ---
+    if (!activeSnipePosition) {
+        activeSnipePosition = {
+            name: detectedToken.name,
+            mint: detectedToken.mint,
+            investedSol: CONFIG.amountToSnipe,
+            currentValueSol: CONFIG.amountToSnipe,
             entryTime: new Date()
         };
-        console.log(`🟢 [PAPER TRADING] Posição aberta em ${bestCandidate.symbol}!`);
+        console.log(`🎯 [SNIPED!] Compra automática de ${CONFIG.amountToSnipe} SOL executada com sucesso em ${detectedToken.name}!`);
     } else {
-        if (activePosition.mint === bestCandidate.mint) {
-            const pnl = ((bestCandidate.outAmount - activePosition.entryOutAmount) / activePosition.entryOutAmount) * 100;
-            console.log(`📊 [MONITORANDO ${activePosition.symbol}] PnL Atual: ${pnl.toFixed(2)}%`);
-
-            if (pnl >= 5) {
-                console.log(`🎯 [TAKE PROFIT] Alvo atingido em ${activePosition.symbol}. Fechando posição.`);
-                activePosition = null;
-            } else if (pnl <= -3) {
-                console.log(`🛑 [STOP LOSS] Limite de perda atingido em ${activePosition.symbol}. Fechando posição.`);
-                activePosition = null;
-            } else {
-                console.log(`⏳ Posição mantida.`);
-            }
-        } else {
-            console.log(`⏳ Aguardando ciclo da posição ativa (${activePosition.symbol})...`);
-        }
+        console.log(`⏳ Já existe uma posição ativa em ${activeSnipePosition.name}. Ignorando novo lançamento.`);
     }
 }
 
-// Executa a cada 15 segundos
-setInterval(scanAndSelectRealToken, 15000);
-scanAndSelectRealToken();
-    
-    // Simula variação de preço para cada token internamente
-    const oportunidades = WATCHLIST.map(token => {
-        const variacao = (Math.random() * 10 - 4.8); // Entre -4.8% e +5.2%
-        const quantidade = Math.floor(token.basePrice * (1 + variacao / 100));
-        return { symbol: token.symbol, outAmount: quantidade };
-    });
+// Monitoramento contínuo da posição ativa (Simulação de PnL em tempo real para o Meme Token snipado)
+function monitorActiveSnipe() {
+    if (!activeSnipePosition) return;
 
-    // Encontra o melhor token do ciclo
-    oportunidades.sort((a, b) => b.outAmount - a.outAmount);
-    const melhor = oportunidades[0];
+    console.log(`\n----------------------------------------`);
+    console.log(`📊 [GERINDO POSIÇÃO SNIPADA]: ${activeSnipePosition.name}`);
 
-    console.log(`> Token selecionado: ${melhor.symbol} (${melhor.outAmount.toLocaleString()} unidades)`);
+    // Simula a volatilidade agressiva do preço do meme token após o snipe
+    const priceFluctuationPct = (Math.random() * 60 - 25); // Oscilação entre -25% e +35% num ciclo
+    activeSnipePosition.currentValueSol *= (1 + priceFluctuationPct / 100);
 
-    if (!activePosition) {
-        activePosition = {
-            symbol: melhor.symbol,
-            entryAmount: melhor.outAmount
-        };
-        console.log(`> [COMPRA] Posição aberta em ${melhor.symbol}`);
+    const pnlPct = ((activeSnipePosition.currentValueSol - CONFIG.amountToSnipe) / CONFIG.amountToSnipe) * 100;
+    console.log(`- PnL Atual: ${pnlPct.toFixed(2)}% (Valor: ${activeSnipePosition.currentValueSol.toFixed(4)} SOL)`);
+
+    // Verificação de Saída Automática (Take Profit / Stop Loss)
+    if (pnlPct >= CONFIG.autoSellProfitPct) {
+        console.log(`🎉 [TAKE PROFIT ATINGIDO!] Vendendo ${activeSnipePosition.name} com lucro de +${pnlPct.toFixed(2)}%!`);
+        activeSnipePosition = null;
+    } else if (pnlPct <= CONFIG.autoSellLossPct) {
+        console.log(`🛑 [STOP LOSS ATINGIDO!] Cortando perdas em ${activeSnipePosition.name} (${pnlPct.toFixed(2)}%).`);
+        activeSnipePosition = null;
     } else {
-        if (activePosition.symbol === melhor.symbol) {
-            const pnl = ((melhor.outAmount - activePosition.entryAmount) / activePosition.entryAmount) * 100;
-            console.log(`> [MONITOR] PnL atual: ${pnl.toFixed(2)}%`);
-            
-            if (pnl >= 5 || pnl <= -3) {
-                console.log(`> [VENDA] Fechando posição.`);
-                activePosition = null;
-            }
-        } else {
-            console.log(`> [AGUARDANDO] Mantendo posição em ${activePosition.symbol}`);
-        }
+        console.log(`⏳ Posição mantida. Monitorando blocos...`);
     }
 }
 
-// Roda a cada 5 segundos
-setInterval(executarCiclo, 5000);
-executarCiclo();
+// Executa o verificador de novos lançamentos a cada 8 segundos
+setInterval(simulateMemeTokenLaunchListener, 8000);
+// Monitora o PnL da posição a cada 3 segundos
+setInterval(monitorActiveSnipe, 3000);
+
+simulateMemeTokenLaunchListener();
