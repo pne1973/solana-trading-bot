@@ -14,8 +14,7 @@ async function executeSwap() {
         const amountInLamports = 10000000; // 0.01 SOL
         
         const quoteResponse = await (
-            await fetch(`https://quote-api.jags.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${TOKEN_TARGET_MINT}&amount=${amountInLamports}&slippageBps=50`)
-        ).json();
+            await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${TOKEN_TARGET_MINT}&amount=${amountInLamports}&slippageBps=50`);
 
         if (!quoteResponse || quoteResponse.error) {
             console.error("Erro ao buscar cotação:", quoteResponse);
