@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-// Watchlist de tokens monitorados
+// Watchlist de tokens monitorados para simulação local
 const WATCHLIST = [
     { symbol: "USDC", basePrice: 180000000 },
     { symbol: "USDT", basePrice: 180500000 },
@@ -11,27 +11,26 @@ const WATCHLIST = [
 const AMOUNT_SOL_TO_TRADE = 0.01;
 let activePosition = null;
 
-function runAutonomousSimulation() {
+function runSandboxSimulation() {
     console.log("\n==============================================");
     console.log(`[SANDBOX SIMULATOR] Analisando mercado: ${new Date().toLocaleTimeString()}`);
     console.log("==============================================");
 
     const marketOpportunities = [];
 
-    // Simula a oscilação de mercado em tempo real para cada token
+    // Simula a oscilação orgânica de mercado para cada token da lista
     for (const token of WATCHLIST) {
-        // Gera uma variação orgânica de preço entre -5% e +6%
-        const randomVariation = (Math.random() * 11 - 5); 
+        const randomVariation = (Math.random() * 10 - 4.8); // Variação entre -4.8% e +5.2%
         const simulatedOutAmount = Math.floor(token.basePrice * (1 + randomVariation / 100));
 
         marketOpportunities.push({
             symbol: token.symbol,
             outAmount: simulatedOutAmount,
-            priceImpactPct: Number((Math.random() * 0.5).toFixed(2))
+            priceImpactPct: Number((Math.random() * 0.4).toFixed(2))
         });
     }
 
-    // Seleciona o token mais promissor (maior retorno estimado no ciclo)
+    // Seleciona o token com maior retorno estimado no ciclo atual
     marketOpportunities.sort((a, b) => b.outAmount - a.outAmount);
     const bestCandidate = marketOpportunities[0];
 
@@ -39,7 +38,7 @@ function runAutonomousSimulation() {
     console.log(`- Retorno estimado: ${bestCandidate.outAmount.toLocaleString()} unidades para ${AMOUNT_SOL_TO_TRADE} SOL`);
     console.log(`- Impacto no preço: ${bestCandidate.priceImpactPct}%`);
 
-    // Gestão da Posição (Paper Trading)
+    // Gestão de Posição (Paper Trading)
     if (!activePosition) {
         activePosition = {
             symbol: bestCandidate.symbol,
@@ -47,7 +46,7 @@ function runAutonomousSimulation() {
             investedSol: AMOUNT_SOL_TO_TRADE,
             entryTime: new Date()
         };
-        console.log(`🟢 [PAPER TRADING] Posição aberta em ${bestCandidate.symbol}!`);
+        console.log(`🟢 [PAPER TRADING] Posição aberta com sucesso em ${bestCandidate.symbol}!`);
     } else {
         if (activePosition.symbol === bestCandidate.symbol) {
             const pnl = ((bestCandidate.outAmount - activePosition.entryOutAmount) / activePosition.entryOutAmount) * 100;
@@ -69,6 +68,6 @@ function runAutonomousSimulation() {
     }
 }
 
-// Executa a cada 10 segundos
-setInterval(runAutonomousSimulation, 10000);
-runAutonomousSimulation();
+// Executa a simulação a cada 10 segundos
+setInterval(runSandboxSimulation, 10000);
+runSandboxSimulation();
