@@ -3,21 +3,21 @@ const fs = require('fs');
 const http = require('http');
 const { Connection, PublicKey } = require('@solana/web3.js');
 
+// Configuração da ligação à Mainnet Real da Solana
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const connection = new Connection(RPC_URL, 'confirmed');
 
 const SNIPER_CONFIG = {
-    amountToInvestSol: 0.05,
-    minLiquiditySol: 15,
-    autoTakeProfitPct: 50,
-    autoStopLossPct: -25
+    amountToInvestSol: 0.05,       // Saldo base investido por operação (Simulado)
+    minLiquiditySol: 15,           // Mínimo de SOL no pool real
+    autoTakeProfitPct: 50,         // Alvo de Lucro (+50%)
+    autoStopLossPct: -25           // Stop Loss (-25%)
 };
 
 let activeSnipeTrade = null;
 const HISTORY_FILE = 'trades_history.json';
 
 let botStats = {
-    status: "A escutar rede",
     totalScanned: 0,
     approvedTokens: 0,
     rejectedTokens: 0,
@@ -38,6 +38,7 @@ function carregarHistorico() {
             botStats.totalTrades = botStats.history.length;
             botStats.wins = botStats.history.filter(t => t.result === 'TAKE_PROFIT').length;
             botStats.losses = botStats.history.filter(t => t.result === 'STOP_LOSS').length;
+            
             botStats.totalSpentSol = botStats.history.reduce((acc, t) => acc + t.investedSol, 0);
             botStats.totalReturnedSol = botStats.history.reduce((acc, t) => acc + t.finalValueSol, 0);
         } catch (e) {
@@ -53,7 +54,7 @@ function salvarTradeNoHistorico(tradeData) {
     carregarHistorico();
 }
 
-// Servidor Web para o Dashboard (utiliza rotas relativas /api)
+// Servidor Web para o Dashboard com suporte a conexões externas (0.0.0.0)
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.url === '/api/stats') {
@@ -93,7 +94,7 @@ const dashboardHtml = `<!DOCTYPE html>
     <div class="container">
         <header>
             <h1>⚡ Solana Auto-Sniper Dashboard</h1>
-            <span id="status" style="color: #4ade80;">● A Escuta (Mainnet)</span>
+            <span id="status" style="color: #4ade80;">● Escuta Real / Simulado</span>
         </header>
 
         <div class="grid">
@@ -131,7 +132,6 @@ const dashboardHtml = `<!DOCTYPE html>
     <script>
         async function fetchStats() {
             try {
-                // Utilização de URL relativa (/api/stats) compatível com túneis cloud (Codespaces)
                 const res = await fetch('/api/stats');
                 const data = await res.json();
                 
@@ -173,8 +173,8 @@ const dashboardHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
-server.listen(3000, () => {
-    console.log("🌐 Dashboard web a rodar em: http://localhost:3000");
+server.listen(3000, '0.0.0.0', () => {
+    console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
 });
 
 async function pollRealBlockchainEvents() {
@@ -228,7 +228,7 @@ async function pollRealBlockchainEvents() {
                 botStats.rejectedTokens++;
             }
         } catch (error) {
-            // Mantém a execução silenciosa em caso de falhas temporárias de rede RPC
+            // Silencia erros temporários de RPC
         }
     }
 }
