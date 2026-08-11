@@ -61,22 +61,6 @@ function salvarTradeNoHistorico(tradeData) {
     carregarHistorico();
 }
 
-// Função dedicada para buscar o preço real do token na blockchain/RPC
-async function obterPrecoRealNaBlockchain(mintAddress) {
-    try {
-        // Exemplo de integração: Aqui pode conectar via RPC da Helius para ler o estado real da conta do token
-        // const accountInfo = await connection.getAccountInfo(new PublicKey(mintAddress));
-        // Para já, mantemos a estrutura base de rácio real pronta a receber os dados da pool:
-        
-        // Simulação baseada em mercado real (substituir pela chamada RPC/API de cotação real do token)
-        return 1.0; 
-    } catch (error) {
-        console.error("Erro ao obter preço real:", error.message);
-        return 1.0;
-    }
-}
-
-// Servidor Web e API
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.url === '/api/stats') {
@@ -222,16 +206,11 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
 });
 
-// Ciclo de atualização de Posição Ativa preparado para dados reais
 setInterval(async () => {
     carregarHistorico();
     if (activeSnipeTrade) {
-        // Consulta o preço real do token na blockchain (substituindo o valor aleatório)
-        const fatorPrecoReal = await obterPrecoRealNaBlockchain(activeSnipeTrade.mint);
-        
-        // Para fins práticos de demonstração com mercado real, mantém-se a oscilação ligada à liquidez real obtida
-        const variacaoReal = (Math.random() * 50 - 20); 
-        activeSnipeTrade.currentValueSol *= (1 + variacaoReal / 100);
+        const variacao = (Math.random() * 50 - 20);
+        activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
 
         const pnl = ((activeSnipeTrade.currentValueSol - activeSnipeTrade.investedSol) / activeSnipeTrade.investedSol) * 100;
         activeSnipeTrade.pnlPct = Number(pnl.toFixed(2));
