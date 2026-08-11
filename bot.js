@@ -28,9 +28,11 @@ let botStats = {
     rejectedTokens: 0,
     totalSpentSol: 0,
     totalReturnedSol: 0,
+    netProfitSol: 0,
     totalTrades: 0,
     wins: 0,
     losses: 0,
+    winRate: 0,
     activeTrade: null,
     history: []
 };
@@ -45,6 +47,8 @@ function carregarHistorico() {
             botStats.losses = botStats.history.filter(t => t.result === 'STOP_LOSS').length;
             botStats.totalSpentSol = botStats.history.reduce((acc, t) => acc + t.investedSol, 0);
             botStats.totalReturnedSol = botStats.history.reduce((acc, t) => acc + t.finalValueSol, 0);
+            botStats.netProfitSol = Number((botStats.totalReturnedSol - botStats.totalSpentSol).toFixed(4));
+            botStats.winRate = botStats.totalTrades > 0 ? Number(((botStats.wins / botStats.totalTrades) * 100).toFixed(1)) : 0;
         } catch (e) {
             botStats.history = [];
         }
@@ -58,12 +62,12 @@ function salvarTradeNoHistorico(tradeData) {
     carregarHistorico();
 }
 
-// Servidor do Dashboard Web
+// Servidor do Dashboard Web com API expandida
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.url === '/api/stats') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(botStats));
+        res.end(JSON.stringify({ ...botStats, config: SNIPER_CONFIG }));
     } else {
         const filePath = path.join(__dirname, 'public', 'index.html');
         fs.readFile(filePath, (err, content) => {
@@ -82,11 +86,11 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
 });
 
-// Gestão de Posição Ativa e simulação de PnL baseada no token real detetado
+// Simulação de ciclo de mercado e gestão de Posição Ativa
 setInterval(() => {
     carregarHistorico();
     if (activeSnipeTrade) {
-        const variacao = (Math.random() * 50 - 20);
+        const variacao = (Math.random() * 55 - 21);
         activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
         const pnl = ((activeSnipeTrade.currentValueSol - activeSnipeTrade.investedSol) / activeSnipeTrade.investedSol) * 100;
         activeSnipeTrade.pnlPct = Number(pnl.toFixed(2));
@@ -110,10 +114,9 @@ setInterval(() => {
     }
 }, 3000);
 
-// ESCUTA REAL DE LANÇAMENTOS NA MAINNET VIA HHELIUS WSS (Pump.fun Program)
+// Escuta real na Mainnet via Helius WSS
 function iniciarEscutaReal() {
     const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
-
     try {
         connection.onLogs(
             new PublicKey(PUMP_FUN_PROGRAM),
@@ -135,7 +138,6 @@ function iniciarEscutaReal() {
                             entryTime: new Date().toLocaleTimeString()
                         };
                         botStats.activeTrade = activeSnipeTrade;
-                        console.log(`🚀 Novo token real detetado na Mainnet: ${activeSnipeTrade.name}`);
                     }
                 } else {
                     botStats.rejectedTokens++;
@@ -143,7 +145,7 @@ function iniciarEscutaReal() {
             },
             "confirmed"
         );
-        console.log("📡 Escuta de novos blocos e tokens reais ativa via Helius WSS.");
+        console.log("📡 Escuta real ativa via Helius WSS.");
     } catch (e) {
         console.error("Erro na subscrição WSS:", e.message);
     }
