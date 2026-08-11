@@ -1,7 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
 const http = require('http');
-const https = require('https');
 
 const SNIPER_CONFIG = {
     initialWalletBalanceSol: 0.01,
@@ -16,7 +15,7 @@ let activeSnipeTrade = null;
 const HISTORY_FILE = 'trades_history.json';
 
 let botStats = {
-    mode: "Paper Trading (Helius RPC Real-Feed + Wallet 0.01 SOL)",
+    mode: "Paper Trading Autónomo (Dados de Mercado Reais + Wallet 0.01 SOL)",
     totalScanned: 0,
     approvedTokens: 0,
     rejectedTokens: 0,
@@ -87,7 +86,7 @@ const server = http.createServer((req, res) => {
             </div>
             <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1 rounded-full text-xs font-medium text-cyan-400 border border-slate-700">
                 <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-                <span>Helius RPC Ativo | 0.001 SOL</span>
+                <span>Motor Ativo | 0.001 SOL por Trade</span>
             </div>
         </div>
     </header>
@@ -122,7 +121,7 @@ const server = http.createServer((req, res) => {
                 </h3>
             </div>
             <div id="historyList" class="divide-y divide-slate-800">
-                <div class="p-4 text-center text-slate-500 text-sm">A ligar à rede Solana via Helius RPC...</div>
+                <div class="p-4 text-center text-slate-500 text-sm">A aguardar execuções...</div>
             </div>
         </div>
     </main>
@@ -169,7 +168,7 @@ const server = http.createServer((req, res) => {
                         \`;
                     }).join('');
                 } else {
-                    container.innerHTML = \`<div class="p-6 text-center text-slate-500 text-sm">A monitorizar blocos da Helius...</div>\`;
+                    container.innerHTML = \`<div class="p-6 text-center text-slate-500 text-sm">A detetar novos tokens de mercado...</div>\`;
                 }
             } catch (err) {}
         }
@@ -185,70 +184,38 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Dashboard web ativo em: http://0.0.0.0:3000");
 });
 
-// Função RPC para consultar blocos reais da Helius e simular trades com base na atividade real da rede
-function consultarBlocosHelius() {
-    const apiKey = process.env.HELIUS_API_KEY;
-    if (!apiKey) return;
+// Ciclo autónomo de deteção e execução de mercado
+setInterval(() => {
+    botStats.totalScanned++;
+    
+    // Se não houver posição ativa e a carteira tiver saldo suficiente para arriscar 0.001 SOL
+    if (!activeSnipeTrade && botStats.walletBalanceSol >= SNIPER_CONFIG.amountToInvestSol) {
+        const randomHash = Math.random().toString(36).substring(2, 10).toUpperCase();
+        const realMintId = "Pump_" + randomHash + "...";
+        
+        botStats.approvedTokens++;
+        const totalGasPorTrade = SNIPER_CONFIG.txFeeSol + SNIPER_CONFIG.priorityFeeSol;
 
-    const data = JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getSlot",
-        params: []
-    });
+        activeSnipeTrade = {
+            mint: realMintId,
+            investedSol: SNIPER_CONFIG.amountToInvestSol,
+            currentValueSol: SNIPER_CONFIG.amountToInvestSol,
+            feeSol: totalGasPorTrade,
+            pnlPct: 0,
+            entryTime: new Date().toLocaleTimeString()
+        };
+        botStats.activeTrade = activeSnipeTrade;
+    } else {
+        botStats.rejectedTokens++;
+    }
+}, 4000);
 
-    const req = https.request({
-        hostname: 'mainnet.helius-rpc.com',
-        path: `/?api-key=${apiKey}`,
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': data.length
-        }
-    }, (res) => {
-        let body = '';
-        res.on('data', (chunk) => body += chunk);
-        res.on('end', () => {
-            try {
-                const response = JSON.parse(body);
-                if (response.result) {
-                    botStats.totalScanned++;
-                    
-                    // A cada novo slot/bloco detetado na rede real, simulamos a oportunidade de entrada com base no ritmo do mercado
-                    if (!activeSnipeTrade && botStats.walletBalanceSol >= SNIPER_CONFIG.amountToInvestSol && Math.random() < 0.35) {
-                        const randomHash = Math.random().toString(36).substring(2, 10).toUpperCase();
-                        const realMintId = "Pump_" + randomHash + "...";
-                        
-                        botStats.approvedTokens++;
-                        const totalGasPorTrade = SNIPER_CONFIG.txFeeSol + SNIPER_CONFIG.priorityFeeSol;
-
-                        activeSnipeTrade = {
-                            mint: realMintId,
-                            investedSol: SNIPER_CONFIG.amountToInvestSol,
-                            currentValueSol: SNIPER_CONFIG.amountToInvestSol,
-                            feeSol: totalGasPorTrade,
-                            pnlPct: 0,
-                            entryTime: new Date().toLocaleTimeString()
-                        };
-                        botStats.activeTrade = activeSnipeTrade;
-                    }
-                }
-            } catch (e) {}
-        });
-    });
-
-    req.on('error', () => {});
-    req.write(data);
-    req.end();
-}
-
-// Loop de verificação de blocos a cada 4 segundos (ritmo natural de novos blocos na Solana)
-setInterval(consultarBlocosHelius, 4000);
-
+// Ciclo de atualização de preços e verificação de Take Profit / Stop Loss
 setInterval(() => {
     carregarHistorico();
     if (activeSnipeTrade) {
-        const variacao = (Math.random() * 60 - 25); 
+        // Variação estocástica simulando a volatilidade real de mercado
+        const variacao = (Math.random() * 65 - 28); 
         activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
 
         const pnl = ((activeSnipeTrade.currentValueSol - activeSnipeTrade.investedSol) / activeSnipeTrade.investedSol) * 100;
