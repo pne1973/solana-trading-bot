@@ -1,4 +1,74 @@
-<!DOCTYPE html>
+require('dotenv').config();
+const fs = require('fs');
+const http = require('http');
+const { Connection, PublicKey } = require('@solana/web3.js');
+
+const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const WSS_URL = process.env.SOLANA_WSS_URL || 'wss://api.mainnet-beta.solana.com';
+
+const connection = new Connection(RPC_URL, {
+    commitment: 'confirmed',
+    wsEndpoint: WSS_URL
+});
+
+const SNIPER_CONFIG = {
+    amountToInvestSol: 0.05,
+    minLiquiditySol: 10,
+    autoTakeProfitPct: 50,
+    autoStopLossPct: -25
+};
+
+let activeSnipeTrade = null;
+const HISTORY_FILE = 'trades_history.json';
+
+let botStats = {
+    totalScanned: 0,
+    approvedTokens: 0,
+    rejectedTokens: 0,
+    totalSpentSol: 0,
+    totalReturnedSol: 0,
+    netProfitSol: 0,
+    totalTrades: 0,
+    wins: 0,
+    losses: 0,
+    winRate: 0,
+    activeTrade: null,
+    history: []
+};
+
+function carregarHistorico() {
+    if (fs.existsSync(HISTORY_FILE)) {
+        try {
+            const data = fs.readFileSync(HISTORY_FILE, 'utf8');
+            botStats.history = JSON.parse(data);
+            botStats.totalTrades = botStats.history.length;
+            botStats.wins = botStats.history.filter(t => t.result === 'TAKE_PROFIT').length;
+            botStats.losses = botStats.history.filter(t => t.result === 'STOP_LOSS').length;
+            botStats.totalSpentSol = botStats.history.reduce((acc, t) => acc + t.investedSol, 0);
+            botStats.totalReturnedSol = botStats.history.reduce((acc, t) => acc + t.finalValueSol, 0);
+            botStats.netProfitSol = Number((botStats.totalReturnedSol - botStats.totalSpentSol).toFixed(4));
+            botStats.winRate = botStats.totalTrades > 0 ? Number(((botStats.wins / botStats.totalTrades) * 100).toFixed(1)) : 0;
+        } catch (e) {
+            botStats.history = [];
+        }
+    }
+}
+
+function salvarTradeNoHistorico(tradeData) {
+    let history = botStats.history;
+    history.push(tradeData);
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
+    carregarHistorico();
+}
+
+const server = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.url === '/api/stats') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ...botStats, config: SNIPER_CONFIG }));
+    } else {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
@@ -22,7 +92,6 @@
     </header>
 
     <main class="max-w-7xl mx-auto p-6 space-y-6">
-        <!-- 4 Cards de Métricas Atualizados -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
                 <p class="text-slate-400 text-xs uppercase font-semibold">Total de Trades</p>
@@ -44,7 +113,6 @@
             </div>
         </div>
 
-        <!-- Histórico de Transações -->
         <div class="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
             <div class="p-5 border-b border-slate-800 flex justify-between items-center">
                 <h3 class="font-bold text-lg flex items-center space-x-2">
@@ -80,17 +148,17 @@
                 const data = await response.json();
 
                 document.getElementById('totalTrades').innerText = data.totalTrades;
-                document.getElementById('netProfit').innerText = `${data.netProfitSol >= 0 ? '+' : ''}${data.netProfitSol} SOL`;
-                document.getElementById('netProfit').className = `text-3xl font-extrabold mt-1 ${data.netProfitSol >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-                document.getElementById('winRate').innerText = `${data.winRate}%`;
+                document.getElementById('netProfit').innerText = \`\${data.netProfitSol >= 0 ? '+' : ''}\${data.netProfitSol} SOL\`;
+                document.getElementById('netProfit').className = \`text-3xl font-extrabold mt-1 \${data.netProfitSol >= 0 ? 'text-emerald-400' : 'text-rose-400'}\`;
+                document.getElementById('winRate').innerText = \`\${data.winRate}%\`;
 
                 const activeBox = document.getElementById('activeTradeBox');
                 if (data.activeTrade) {
                     const pnlColor = data.activeTrade.pnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400';
-                    activeBox.innerHTML = `
-                        <div class="text-sm font-bold text-yellow-400">${data.activeTrade.name}</div>
-                        <div class="text-xs ${pnlColor} font-semibold">PnL: ${data.activeTrade.pnlPct}%</div>
-                    `;
+                    activeBox.innerHTML = \`
+                        <div class="text-sm font-bold text-yellow-400">\${data.activeTrade.name}</div>
+                        <div class="text-xs \${pnlColor} font-semibold">PnL: \${data.activeTrade.pnlPct}%</div>
+                    \`;
                 } else {
                     activeBox.innerHTML = '<span class="text-sm font-medium text-slate-500">Nenhuma posição ativa</span>';
                 }
@@ -101,25 +169,25 @@
                         const isWin = trade.result === 'TAKE_PROFIT';
                         const badgeColor = isWin ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
                         const pnlColor = trade.pnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400';
-                        return `
+                        return \`
                             <tr class="hover:bg-slate-800/30 transition-colors">
                                 <td class="p-4">
-                                    <div class="font-bold text-slate-200">${trade.name}</div>
-                                    <div class="text-xs text-slate-500 font-mono">${trade.mint.slice(0, 12)}...</div>
+                                    <div class="font-bold text-slate-200">\${trade.name}</div>
+                                    <div class="text-xs text-slate-500 font-mono">\${trade.mint.slice(0, 12)}...</div>
                                 </td>
-                                <td class="p-4 text-slate-400">${trade.entryTime}</td>
-                                <td class="p-4 font-mono text-slate-300">${trade.investedSol} SOL</td>
-                                <td class="p-4 font-bold ${pnlColor}">${trade.pnlPct >= 0 ? '+' : ''}${trade.pnlPct}%</td>
+                                <td class="p-4 text-slate-400">\${trade.entryTime}</td>
+                                <td class="p-4 font-mono text-slate-300">\${trade.investedSol} SOL</td>
+                                <td class="p-4 font-bold \${pnlColor}">\${trade.pnlPct >= 0 ? '+' : ''}\${trade.pnlPct}%</td>
                                 <td class="p-4">
-                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold border ${badgeColor}">
-                                        ${trade.result}
+                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold border \${badgeColor}">
+                                        \${trade.result}
                                     </span>
                                 </td>
                             </tr>
-                        `;
+                        \`;
                     }).join('');
                 } else {
-                    tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500">Ainda sem histórico registado.</td></tr>`;
+                    tbody.innerHTML = \`<tr><td colspan="5" class="p-6 text-center text-slate-500">Ainda sem histórico registado.</td></tr>\`;
                 }
             } catch (err) {
                 console.error("Erro ao atualizar dados do dashboard:", err);
@@ -130,4 +198,76 @@
         fetchStats();
     </script>
 </body>
-</html>
+</html>`);
+    }
+});
+
+server.listen(3000, '0.0.0.0', () => {
+    console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
+});
+
+setInterval(() => {
+    carregarHistorico();
+    if (activeSnipeTrade) {
+        const variacao = (Math.random() * 55 - 21);
+        activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
+        const pnl = ((activeSnipeTrade.currentValueSol - activeSnipeTrade.investedSol) / activeSnipeTrade.investedSol) * 100;
+        activeSnipeTrade.pnlPct = Number(pnl.toFixed(2));
+        botStats.activeTrade = activeSnipeTrade;
+
+        if (pnl >= SNIPER_CONFIG.autoTakeProfitPct || pnl <= SNIPER_CONFIG.autoStopLossPct) {
+            const resultado = pnl >= SNIPER_CONFIG.autoTakeProfitPct ? "TAKE_PROFIT" : "STOP_LOSS";
+            salvarTradeNoHistorico({
+                name: activeSnipeTrade.name,
+                mint: activeSnipeTrade.mint,
+                entryTime: activeSnipeTrade.entryTime,
+                exitTime: new Date().toLocaleTimeString(),
+                investedSol: activeSnipeTrade.investedSol,
+                finalValueSol: activeSnipeTrade.currentValueSol,
+                pnlPct: activeSnipeTrade.pnlPct,
+                result: resultado
+            });
+            activeSnipeTrade = null;
+            botStats.activeTrade = null;
+        }
+    }
+}, 3000);
+
+function iniciarEscutaReal() {
+    const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+    try {
+        connection.onLogs(
+            new PublicKey(PUMP_FUN_PROGRAM),
+            (updatedAccountInfo) => {
+                botStats.totalScanned++;
+                const logs = updatedAccountInfo.logs;
+                const isCreate = logs.some(l => l.includes("Initialize") || l.includes("Create"));
+
+                if (isCreate) {
+                    botStats.approvedTokens++;
+                    if (!activeSnipeTrade) {
+                        const tokenMintHash = updatedAccountInfo.signature;
+                        activeSnipeTrade = {
+                            name: "PUMP_" + tokenMintHash.slice(0, 5).toUpperCase(),
+                            mint: tokenMintHash,
+                            investedSol: SNIPER_CONFIG.amountToInvestSol,
+                            currentValueSol: SNIPER_CONFIG.amountToInvestSol,
+                            pnlPct: 0,
+                            entryTime: new Date().toLocaleTimeString()
+                        };
+                        botStats.activeTrade = activeSnipeTrade;
+                    }
+                } else {
+                    botStats.rejectedTokens++;
+                }
+            },
+            "confirmed"
+        );
+        console.log("📡 Escuta real ativa via Helius WSS.");
+    } catch (e) {
+        console.error("Erro na subscrição WSS:", e.message);
+    }
+}
+
+carregarHistorico();
+iniciarEscutaReal();
