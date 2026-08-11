@@ -3,21 +3,20 @@ const fs = require('fs');
 const http = require('http');
 const WebSocket = require('ws');
 
-// Configuração de Operação com Saldo Inicial de Carteira Virtual (0.01 SOL)
 const SNIPER_CONFIG = {
-    initialWalletBalanceSol: 0.01,     // Saldo inicial simulado da carteira
-    amountToInvestSol: 0.001,          // Valor fixo por operação (0.001 SOL)
-    txFeeSol: 0.000005,                // Taxa base de transação na rede Solana
-    priorityFeeSol: 0.00001,           // Taxa de prioridade estimada
-    autoTakeProfitPct: 50,             // Take Profit (+50%)
-    autoStopLossPct: -25               // Stop Loss (-25%)
+    initialWalletBalanceSol: 0.01,
+    amountToInvestSol: 0.001,
+    txFeeSol: 0.000005,
+    priorityFeeSol: 0.00001,
+    autoTakeProfitPct: 50,
+    autoStopLossPct: -25
 };
 
 let activeSnipeTrade = null;
 const HISTORY_FILE = 'trades_history.json';
 
 let botStats = {
-    mode: "Paper Trading (Helius Real + Carteira 0.01 SOL)",
+    mode: "Paper Trading (Helius Real + Wallet 0.01 SOL)",
     totalScanned: 0,
     approvedTokens: 0,
     rejectedTokens: 0,
@@ -38,7 +37,7 @@ function carregarHistorico() {
     if (fs.existsSync(HISTORY_FILE)) {
         try {
             const data = fs.readFileSync(HISTORY_FILE, 'utf8');
-            botStats.history = JSON.parse(data);
+            botStats.history = JSON.parse(data).filter(t => !t.mint.includes("So111111")); // Remove lixo antigo se existir
             botStats.totalTrades = botStats.history.length;
             botStats.wins = botStats.history.filter(t => t.result === 'TAKE_PROFIT').length;
             botStats.losses = botStats.history.filter(t => t.result === 'STOP_LOSS').length;
@@ -48,10 +47,7 @@ function carregarHistorico() {
             
             const bruto = botStats.totalReturnedSol - botStats.totalSpentSol;
             botStats.netProfitSol = Number((bruto - botStats.totalFeesSol).toFixed(6));
-            
-            // O saldo atual da carteira reflete o saldo inicial + lucro líquido total
             botStats.walletBalanceSol = Number((SNIPER_CONFIG.initialWalletBalanceSol + botStats.netProfitSol).toFixed(6));
-            
             botStats.winRate = botStats.totalTrades > 0 ? Number(((botStats.wins / botStats.totalTrades) * 100).toFixed(1)) : 0;
         } catch (e) {
             botStats.history = [];
@@ -78,71 +74,55 @@ const server = http.createServer((req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solana Paper Sniper - Carteira 0.01 SOL</title>
+    <title>Solana Paper Sniper</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans min-h-screen">
-    <header class="bg-slate-900 border-b border-slate-800 p-4 shadow-md">
-        <div class="max-w-7xl mx-auto flex justify-between items-center">
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen pb-10">
+    <header class="bg-slate-900 border-b border-slate-800 p-4 shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
             <div class="flex items-center space-x-3">
-                <i class="fa-solid fa-wallet text-emerald-400 text-2xl"></i>
-                <h1 class="text-xl font-bold tracking-wide">Solana Paper Sniper (Wallet: 0.01 SOL)</h1>
+                <i class="fa-solid fa-wallet text-emerald-400 text-xl"></i>
+                <h1 class="text-lg font-bold tracking-wide">Solana Paper Sniper</h1>
             </div>
-            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-full text-xs font-medium text-cyan-400 border border-slate-700">
-                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                <span>Dados Reais Helius | Sem Risco Financeiro</span>
+            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1 rounded-full text-xs font-medium text-cyan-400 border border-slate-700">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                <span>Helius Real Feed | 0.001 SOL</span>
             </div>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto p-6 space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Saldo da Carteira Virtual</p>
-                <h2 id="walletBalance" class="text-3xl font-extrabold mt-1 text-cyan-400">0.0100 SOL</h2>
+    <main class="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
+                <p class="text-slate-400 text-xs uppercase font-semibold">Saldo Virtual</p>
+                <h2 id="walletBalance" class="text-2xl font-extrabold mt-1 text-cyan-400">0.0100 SOL</h2>
             </div>
-            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Lucro / Prejuízo Líquido</p>
-                <h2 id="netProfit" class="text-3xl font-extrabold mt-1 text-emerald-400">0.0000 SOL</h2>
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
+                <p class="text-slate-400 text-xs uppercase font-semibold">Lucro / Prejuízo</p>
+                <h2 id="netProfit" class="text-2xl font-extrabold mt-1 text-emerald-400">0.0000 SOL</h2>
             </div>
-            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
                 <p class="text-slate-400 text-xs uppercase font-semibold">Total de Trades</p>
-                <h2 id="totalTrades" class="text-3xl font-extrabold mt-1 text-slate-100">0</h2>
+                <h2 id="totalTrades" class="text-2xl font-extrabold mt-1 text-slate-100">0</h2>
             </div>
-            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
                 <p class="text-slate-400 text-xs uppercase font-semibold">Posição Ativa</p>
                 <div id="activeTradeBox" class="mt-1">
-                    <span class="text-sm font-bold text-slate-500">À espera de token...</span>
+                    <span class="text-xs font-bold text-slate-500">À espera de token...</span>
                 </div>
             </div>
         </div>
 
-        <div class="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
-            <div class="p-5 border-b border-slate-800 flex justify-between items-center">
-                <h3 class="font-bold text-lg flex items-center space-x-2">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl shadow overflow-hidden">
+            <div class="p-4 border-b border-slate-800">
+                <h3 class="font-bold text-base flex items-center space-x-2">
                     <i class="fa-solid fa-clock-rotate-left text-slate-400"></i>
-                    <span>Histórico de Operações com Dados Reais</span>
+                    <span>Histórico de Operações</span>
                 </h3>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-800/50 text-slate-400 text-xs uppercase border-b border-slate-800">
-                            <th class="p-4">Mint Real (Token)</th>
-                            <th class="p-4">Entrada</th>
-                            <th class="p-4">Investido</th>
-                            <th class="p-4">Taxas (Gás)</th>
-                            <th class="p-4">PnL</th>
-                            <th class="p-4">Resultado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="historyTable" class="divide-y divide-slate-800 text-sm">
-                        <tr>
-                            <td colspan="6" class="p-6 text-center text-slate-500">A sincronizar com a Helius...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div id="historyList" class="divide-y divide-slate-800">
+                <div class="p-4 text-center text-slate-500 text-sm">A sincronizar com a Helius...</div>
             </div>
         </div>
     </main>
@@ -155,7 +135,7 @@ const server = http.createServer((req, res) => {
 
                 document.getElementById('walletBalance').innerText = \`\${data.walletBalanceSol.toFixed(5)} SOL\`;
                 document.getElementById('netProfit').innerText = \`\${data.netProfitSol >= 0 ? '+' : ''}\${data.netProfitSol.toFixed(5)} SOL\`;
-                document.getElementById('netProfit').className = \`text-3xl font-extrabold mt-1 \${data.netProfitSol >= 0 ? 'text-emerald-400' : 'text-rose-400'}\`;
+                document.getElementById('netProfit').className = \`text-2xl font-extrabold mt-1 \${data.netProfitSol >= 0 ? 'text-emerald-400' : 'text-rose-400'}\`;
                 document.getElementById('totalTrades').innerText = data.totalTrades;
 
                 const activeBox = document.getElementById('activeTradeBox');
@@ -166,36 +146,32 @@ const server = http.createServer((req, res) => {
                         <div class="text-xs \${pnlColor} font-bold mt-1">PnL: \${data.activeTrade.pnlPct}%</div>
                     \`;
                 } else {
-                    activeBox.innerHTML = '<span class="text-sm font-medium text-slate-500">Nenhuma posição ativa</span>';
+                    activeBox.innerHTML = '<span class="text-xs font-medium text-slate-500">Nenhuma posição ativa</span>';
                 }
 
-                const tbody = document.getElementById('historyTable');
+                const container = document.getElementById('historyList');
                 if (data.history && data.history.length > 0) {
-                    tbody.innerHTML = data.history.slice().reverse().map(trade => {
+                    container.innerHTML = data.history.slice().reverse().map(trade => {
                         const isWin = trade.result === 'TAKE_PROFIT';
                         const badgeColor = isWin ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
                         const pnlColor = trade.pnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400';
                         return \`
-                            <tr class="hover:bg-slate-800/30 transition-colors">
-                                <td class="p-4 font-mono text-xs text-cyan-300">\${trade.mint}</td>
-                                <td class="p-4 text-slate-400">\${trade.entryTime}</td>
-                                <td class="p-4 font-mono text-slate-300">\${trade.investedSol} SOL</td>
-                                <td class="p-4 font-mono text-amber-400">\${trade.feeSol} SOL</td>
-                                <td class="p-4 font-bold \${pnlColor}">\${trade.pnlPct >= 0 ? '+' : ''}\${trade.pnlPct}%</td>
-                                <td class="p-4">
-                                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold border \${badgeColor}">
-                                        \${trade.result}
-                                    </span>
-                                </td>
-                            </tr>
+                            <div class="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 hover:bg-slate-800/30 transition-colors">
+                                <div>
+                                    <div class="font-mono text-xs text-cyan-300 font-bold">\${trade.mint}</div>
+                                    <div class="text-xs text-slate-400 mt-0.5">Entrada: \${trade.entryTime} | Inv: \${trade.investedSol} SOL</div>
+                                </div>
+                                <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                                    <span class="text-sm font-bold \${pnlColor}">\${trade.pnlPct >= 0 ? '+' : ''}\${trade.pnlPct}%</span>
+                                    <span class="px-2 py-0.5 rounded text-xs font-semibold border \${badgeColor}">\${trade.result}</span>
+                                </div>
+                            </div>
                         \`;
                     }).join('');
                 } else {
-                    tbody.innerHTML = \`<tr><td colspan="6" class="p-6 text-center text-slate-500">À espera da deteção de novos tokens reais...</td></tr>\`;
+                    container.innerHTML = \`<div class="p-6 text-center text-slate-500 text-sm">À espera de novos tokens reais...</div>\`;
                 }
-            } catch (err) {
-                console.error("Erro ao atualizar dashboard:", err);
-            }
+            } catch (err) {}
         }
         setInterval(fetchStats, 2000);
         fetchStats();
@@ -211,22 +187,18 @@ server.listen(3000, '0.0.0.0', () => {
 
 function iniciarEscutaHeliusReal() {
     const apiKey = process.env.HELIUS_API_KEY;
-    if (!apiKey) {
-        console.log("⚠️ AVISO: HELIUS_API_KEY não encontrada no .env.");
-        return;
-    }
+    if (!apiKey) return;
 
     const wsUrl = `wss://mainnet.helius-rpc.com/?api-key=${apiKey}`;
     const ws = new WebSocket(wsUrl);
 
     ws.on('open', () => {
-        console.log("✅ Conexão estabelecida com a Helius com sucesso!");
         ws.send(JSON.stringify({
             jsonrpc: "2.0",
             id: 1,
             method: "logsSubscribe",
             params: [
-                { mentions: ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"] },
+                { mentions: ["6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"] }, // Programa oficial do Pump.fun para evitar o lixo do System Program
                 { commitment: "confirmed" }
             ]
         }));
@@ -238,12 +210,11 @@ function iniciarEscutaHeliusReal() {
             if (response.params && response.params.result) {
                 botStats.totalScanned++;
                 const logs = response.params.result.value.logs || [];
-                const isNewMint = logs.some(log => log.includes("InitializeMint") || log.includes("MintTo"));
+                const isCreateEvent = logs.some(log => log.includes("InitializeAccount") || log.includes("Create"));
                 
-                // Só abre trade se houver saldo suficiente na carteira virtual (>= 0.001 SOL)
-                if (isNewMint && !activeSnipeTrade && botStats.walletBalanceSol >= SNIPER_CONFIG.amountToInvestSol) {
+                if (isCreateEvent && !activeSnipeTrade && botStats.walletBalanceSol >= SNIPER_CONFIG.amountToInvestSol) {
                     const signature = response.params.result.value.signature;
-                    const realMintId = "Mint_" + signature.slice(0, 10) + "...";
+                    const realMintId = "Pump_" + signature.slice(0, 8) + "...";
                     
                     botStats.approvedTokens++;
                     const totalGasPorTrade = SNIPER_CONFIG.txFeeSol + SNIPER_CONFIG.priorityFeeSol;
@@ -264,7 +235,6 @@ function iniciarEscutaHeliusReal() {
         } catch (err) {}
     });
 
-    ws.on('error', (err) => {});
     ws.on('close', () => {
         setTimeout(iniciarEscutaHeliusReal, 5000);
     });
