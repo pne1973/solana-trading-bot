@@ -6,7 +6,8 @@ const SNIPER_CONFIG = {
     amountToInvestSol: 0.05,
     minLiquiditySol: 10,
     autoTakeProfitPct: 50,
-    autoStopLossPct: -25
+    autoStopLossPct: -25,
+    txFeeSol: 0.00005 // Taxa estimada de gás da rede Solana por operação
 };
 
 let activeSnipeTrade = null;
@@ -18,6 +19,7 @@ let botStats = {
     rejectedTokens: 0,
     totalSpentSol: 0,
     totalReturnedSol: 0,
+    totalFeesSol: 0,
     netProfitSol: 0,
     totalTrades: 0,
     wins: 0,
@@ -37,7 +39,11 @@ function carregarHistorico() {
             botStats.losses = botStats.history.filter(t => t.result === 'STOP_LOSS').length;
             botStats.totalSpentSol = botStats.history.reduce((acc, t) => acc + t.investedSol, 0);
             botStats.totalReturnedSol = botStats.history.reduce((acc, t) => acc + t.finalValueSol, 0);
-            botStats.netProfitSol = Number((botStats.totalReturnedSol - botStats.totalSpentSol).toFixed(4));
+            botStats.totalFeesSol = botStats.history.reduce((acc, t) => acc + (t.feeSol || 0), 0);
+            
+            // Lucro líquido desconta o valor investido, adiciona o retorno e subtrai todas as taxas de gás
+            const bruto = botStats.totalReturnedSol - botStats.totalSpentSol;
+            botStats.netProfitSol = Number((bruto - botStats.totalFeesSol).toFixed(4));
             botStats.winRate = botStats.totalTrades > 0 ? Number(((botStats.wins / botStats.totalTrades) * 100).toFixed(1)) : 0;
         } catch (e) {
             botStats.history = [];
@@ -77,7 +83,7 @@ const server = http.createServer((req, res) => {
             </div>
             <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-full text-xs font-medium text-emerald-400 border border-slate-700">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Modo Simulação Ativo</span>
+                <span>Modo Simulação com Taxas Ativo</span>
             </div>
         </div>
     </header>
@@ -89,12 +95,12 @@ const server = http.createServer((req, res) => {
                 <h2 id="totalTrades" class="text-3xl font-extrabold mt-1 text-slate-100">0</h2>
             </div>
             <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Lucro Líquido (SOL)</p>
+                <p class="text-slate-400 text-xs uppercase font-semibold">Lucro Líquido (c/ Taxas)</p>
                 <h2 id="netProfit" class="text-3xl font-extrabold mt-1 text-emerald-400">0.0000 SOL</h2>
             </div>
             <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Taxa de Acerto (Win Rate)</p>
-                <h2 id="winRate" class="text-3xl font-extrabold mt-1 text-sky-400">0%</h2>
+                <p class="text-slate-400 text-xs uppercase font-semibold">Taxas Totais (Gás)</p>
+                <h2 id="totalFees" class="text-3xl font-extrabold mt-1 text-amber-400">0.0000 SOL</h2>
             </div>
             <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
                 <p class="text-slate-400 text-xs uppercase font-semibold">Posição Ativa</p>
@@ -108,7 +114,7 @@ const server = http.createServer((req, res) => {
             <div class="p-5 border-b border-slate-800 flex justify-between items-center">
                 <h3 class="font-bold text-lg flex items-center space-x-2">
                     <i class="fa-solid fa-clock-rotate-left text-slate-400"></i>
-                    <span>Histórico de Transações e Execuções</span>
+                    <span>Histórico de Transações e Taxas</span>
                 </h3>
             </div>
             <div class="overflow-x-auto">
@@ -118,13 +124,14 @@ const server = http.createServer((req, res) => {
                             <th class="p-4">Token</th>
                             <th class="p-4">Entrada</th>
                             <th class="p-4">Investido</th>
-                            <th class="p-4">Saída / PnL</th>
+                            <th class="p-4">Taxa Gás</th>
+                            <th class="p-4">PnL</th>
                             <th class="p-4">Resultado</th>
                         </tr>
                     </thead>
                     <tbody id="historyTable" class="divide-y divide-slate-800 text-sm">
                         <tr>
-                            <td colspan="5" class="p-6 text-center text-slate-500">A carregar dados do bot...</td>
+                            <td colspan="6" class="p-6 text-center text-slate-500">A carregar dados do bot...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -141,7 +148,7 @@ const server = http.createServer((req, res) => {
                 document.getElementById('totalTrades').innerText = data.totalTrades;
                 document.getElementById('netProfit').innerText = \`\${data.netProfitSol >= 0 ? '+' : ''}\${data.netProfitSol} SOL\`;
                 document.getElementById('netProfit').className = \`text-3xl font-extrabold mt-1 \${data.netProfitSol >= 0 ? 'text-emerald-400' : 'text-rose-400'}\`;
-                document.getElementById('winRate').innerText = \`\${data.winRate}%\`;
+                document.getElementById('totalFees').innerText = \`\${data.totalFeesSol.toFixed(5)} SOL\`;
 
                 const activeBox = document.getElementById('activeTradeBox');
                 if (data.activeTrade) {
@@ -168,6 +175,7 @@ const server = http.createServer((req, res) => {
                                 </td>
                                 <td class="p-4 text-slate-400">\${trade.entryTime}</td>
                                 <td class="p-4 font-mono text-slate-300">\${trade.investedSol} SOL</td>
+                                <td class="p-4 font-mono text-amber-400">\${trade.feeSol} SOL</td>
                                 <td class="p-4 font-bold \${pnlColor}">\${trade.pnlPct >= 0 ? '+' : ''}\${trade.pnlPct}%</td>
                                 <td class="p-4">
                                     <span class="px-2.5 py-1 rounded-full text-xs font-semibold border \${badgeColor}">
@@ -178,7 +186,7 @@ const server = http.createServer((req, res) => {
                         \`;
                     }).join('');
                 } else {
-                    tbody.innerHTML = \`<tr><td colspan="5" class="p-6 text-center text-slate-500">Ainda sem histórico registado.</td></tr>\`;
+                    tbody.innerHTML = \`<tr><td colspan="6" class="p-6 text-center text-slate-500">Ainda sem histórico registado.</td></tr>\`;
                 }
             } catch (err) {
                 console.error("Erro ao atualizar dados do dashboard:", err);
@@ -194,7 +202,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(3000, '0.0.0.0', () => {
-    console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
+    console.log("🌐 Dashboard web com suporte a taxas a rodar em: http://0.0.0.0:3000");
 });
 
 setInterval(async () => {
@@ -216,6 +224,7 @@ setInterval(async () => {
                 exitTime: new Date().toLocaleTimeString(),
                 investedSol: activeSnipeTrade.investedSol,
                 finalValueSol: activeSnipeTrade.currentValueSol,
+                feeSol: SNIPER_CONFIG.txFeeSol,
                 pnlPct: activeSnipeTrade.pnlPct,
                 result: resultado
             });
@@ -226,7 +235,7 @@ setInterval(async () => {
 }, 3000);
 
 function iniciarMotorSimulacao() {
-    console.log("🚀 Motor de simulação de mercado real iniciado com sucesso.");
+    console.log("🚀 Motor de simulação com taxas de gás iniciado com sucesso.");
     setInterval(async () => {
         try {
             botStats.totalScanned++;
