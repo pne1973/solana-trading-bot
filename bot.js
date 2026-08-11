@@ -1,6 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
-const http = http = require('http');
+const http = require('http');
 const https = require('https');
 
 const SNIPER_CONFIG = {
@@ -185,12 +185,9 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Dashboard web ativo em: http://0.0.0.0:3000");
 });
 
-// Função para obter assinaturas de transações recentes do programa Pump.fun na mainnet da Solana
 function verificarTransacoesReaisPumpFun() {
     const rpcHost = process.env.HELIUS_API_KEY ? 'mainnet.helius-rpc.com' : 'api.mainnet-beta.solana.com';
     const rpcPath = process.env.HELIUS_API_KEY ? `/?api-key=${process.env.HELIUS_API_KEY}` : '/';
-
-    // Endereço oficial do programa Pump.fun na Solana
     const PUMP_FUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 
     const data = JSON.stringify({
@@ -219,14 +216,10 @@ function verificarTransacoesReaisPumpFun() {
                 const response = JSON.parse(body);
                 if (response.result && Array.isArray(response.result) && response.result.length > 0) {
                     botStats.totalScanned += response.result.length;
-
-                    // Pegamos a transação mais recente detetada na rede real do Pump.fun
                     const ultimaTx = response.result[0];
                     const realMintCandidate = "Token_" + ultimaTx.signature.substring(0, 8) + "...";
 
-                    // Se não tivermos trade ativo e a carteira tiver saldo, compramos o direito deste token real detetado na rede
                     if (!activeSnipeTrade && botStats.walletBalanceSol >= SNIPER_CONFIG.amountToInvestSol) {
-                        // Verificar se já não operámos este token recentemente
                         const jaExiste = botStats.history.some(t => t.mint === realMintCandidate);
                         if (!jaExiste) {
                             botStats.approvedTokens++;
@@ -253,14 +246,11 @@ function verificarTransacoesReaisPumpFun() {
     req.end();
 }
 
-// Consultar a rede a cada 5 segundos para apanhar novos blocos e transações reais do Pump.fun
 setInterval(verificarTransacoesReaisPumpFun, 5000);
 
-// Ciclo de atualização de preços com base no comportamento de mercado detetado
 setInterval(() => {
     carregarHistorico();
     if (activeSnipeTrade) {
-        // Volatilidade em cima do fluxo real de mercado
         const variacao = (Math.random() * 70 - 30); 
         activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
 
