@@ -1,13 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
 const http = require('http');
-const { Connection, PublicKey } = require('@solana/web3.js');
-
-const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-
-const connection = new Connection(RPC_URL, {
-    commitment: 'confirmed'
-});
 
 const SNIPER_CONFIG = {
     amountToInvestSol: 0.05,
@@ -84,7 +77,7 @@ const server = http.createServer((req, res) => {
             </div>
             <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-full text-xs font-medium text-emerald-400 border border-slate-700">
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Paper Trading (RPC HTTP Ativo)</span>
+                <span>Modo Simulação Ativo</span>
             </div>
         </div>
     </header>
@@ -233,13 +226,11 @@ setInterval(async () => {
     }
 }, 3000);
 
-// Verificação periódica segura via HTTP RPC em vez de WebSocket instável
-async function iniciarEscutaHttp() {
-    console.log("📡 Escuta de blocos ativa via RPC HTTP (Helius).");
+function iniciarMotorSimulacao() {
+    console.log("🚀 Motor de simulação de mercado real iniciado com sucesso.");
     setInterval(async () => {
         try {
             botStats.totalScanned++;
-            // Simulação de deteção baseada em atividade real da rede
             if (!activeSnipeTrade && Math.random() < 0.4) {
                 botStats.approvedTokens++;
                 const randomHash = Math.random().toString(36).substring(2, 10).toUpperCase();
@@ -256,10 +247,10 @@ async function iniciarEscutaHttp() {
                 botStats.rejectedTokens++;
             }
         } catch (e) {
-            console.error("Erro na leitura RPC:", e.message);
+            console.error("Erro no motor:", e.message);
         }
     }, 5000);
 }
 
 carregarHistorico();
-iniciarEscutaHttp();
+iniciarMotorSimulacao();
