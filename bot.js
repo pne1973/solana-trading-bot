@@ -197,7 +197,6 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Dashboard web a rodar em: http://0.0.0.0:3000");
 });
 
-// Gestão de Posição Ativa e Simulação de Preço Real
 setInterval(async () => {
     carregarHistorico();
     if (activeSnipeTrade) {
