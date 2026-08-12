@@ -79,40 +79,32 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
 
         console.log("🔍 A obter cotação da Jupiter...");
         
-        // Configuração para forçar cabeçalho Host e evitar falhas de resolução de nomes
-        const instance = axios.create({
-            baseURL: 'https://quote-api.jup.ag',
-            timeout: 10000,
-            headers: {
-                'Host': 'quote-api.jup.ag',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-            },
-            httpsAgent: new https.Agent({  
-                rejectUnauthorized: false,
-                lookup: (hostname, options, callback) => {
-                    // Mip/IP estático de fallback ou DNS público direto do Cloudflare/Google
-                    require('dns').resolve4('cloudflare-dns.com', (err, addresses) => {
-                        callback(null, '104.18.6.182', 43); // IP genérico de borda Cloudflare para reencaminhamento
-                    });
-                }
-            })
+        const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}&onlyDirectRoutes=true`;
+        
+        const quoteRes = await axios.get(quoteUrl, {
+            timeout: 8000,
+            headers: { 'Accept': 'application/json' }
         });
 
-        // Caso prefira usar uma rota standard com fetch seguro alternativo via IP direto:
-        const quoteRes = await axios.get(`https://api.allorigins.win/raw?url=` + encodeURIComponent(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`), { timeout: 8000 });
-        
-        const quoteData = typeof quoteRes.data === 'string' ? JSON.parse(quoteRes.data) : quoteRes.data;
-
-        if (!quoteData || quoteData.error) {
-            throw new Error("Erro na cotação: " + (quoteData.error || "Sem rota"));
+        if (!quoteRes.data || !quoteRes.data.outAmount) {
+            throw new Error("Resposta de cotação inválida da Jupiter.");
         }
 
         console.log("🔄 A criar transação de swap...");
         const swapRes = await axios.post('https://quote-api.jup.ag/v6/swap', {
-            quoteResponse: quoteData,
+            quoteResponse: quoteRes.data,
             userPublicKey: walletKeypair.publicKey.toBase58(),
-            wrapAndUnwrapSol: true
-        }, { timeout: 8000 });
+            wrapAndUnwrapSol: true,
+            dynamicComputeUnitLimit: true,
+            prioritizationFeeLamports: 'auto'
+        }, {
+            timeout: 8000,
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+        });
+
+        if (!swapRes.data || !swapRes.data.swapTransaction) {
+            throw new Error("Falha ao gerar transação de swap.");
+        }
 
         const transaction = VersionedTransaction.deserialize(Buffer.from(swapRes.data.swapTransaction, 'base64'));
         transaction.sign([walletKeypair]);
