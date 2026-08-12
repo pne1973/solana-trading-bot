@@ -7,7 +7,7 @@ const { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, Transaction } = requir
 // Configurações de Produção e Gestão de Risco
 const SNIPER_CONFIG = {
     // ATENÇÃO: Mude para 'false' apenas quando estiver 100% pronto para arriscar fundos reais
-    LIVE_TRADING_ENABLED: false, 
+    LIVE_TRADING_ENABLED: true, 
     amountToInvestSol: 0.001,
     maxAllowedSlippageBps: 500, // 5% de slippage tolerado
     autoTakeProfitPct: 50,
