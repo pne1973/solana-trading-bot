@@ -1,6 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
-const http = http = require('http');
+const http = require('http');
 const https = require('https');
 const { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
 
@@ -78,15 +78,13 @@ function salvarTradeNoHistorico(tradeData) {
     carregarHistorico();
 }
 
-// Função para executar Swap Real via Jupiter API v6
 async function executarSwapJupiter(outputMint, isBuy = true) {
     if (!walletKeypair) return null;
     try {
         const inputMint = isBuy ? "So11111111111111111111111111111111111111112" : outputMint;
         const targetMint = isBuy ? outputMint : "So11111111111111111111111111111111111111112";
-        const amount = isBuy ? Math.floor(SNIPER_CONFIG.amountToInvestSol * LAMPORTS_PER_SOL) : 1000000; // Ajustar conforme quantidade de tokens
+        const amount = isBuy ? Math.floor(SNIPER_CONFIG.amountToInvestSol * LAMPORTS_PER_SOL) : 1000000;
 
-        // 1. Obter Cotação da Jupiter
         const quoteRes = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`);
         const quoteData = await quoteRes.json();
         
@@ -95,7 +93,6 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
             return null;
         }
 
-        // 2. Obter Transação de Swap da Jupiter
         const swapRes = await fetch('https://quote-api.jup.ag/v6/swap', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -112,7 +109,6 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
             return null;
         }
 
-        // 3. Assinar e Enviar Transação
         const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
         const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
         transaction.sign([walletKeypair]);
@@ -126,7 +122,6 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
     }
 }
 
-// Servidor Web para Monitorização em Tempo Real
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.url === '/api/stats') {
@@ -185,7 +180,7 @@ function monitorizarMercadoReal() {
                 const response = JSON.parse(body);
                 if (response.result && response.result.length > 0) {
                     botStats.totalScanned++;
-                    const tokenMintReal = "So11111111111111111111111111111111111111112"; // Substituir pelo mint detetado
+                    const tokenMintReal = "So11111111111111111111111111111111111111112";
 
                     if (!activeSnipeTrade && botStats.realWalletBalanceSol >= SNIPER_CONFIG.amountToInvestSol) {
                         if (SNIPER_CONFIG.LIVE_TRADING_ENABLED) {
