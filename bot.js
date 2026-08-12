@@ -50,9 +50,12 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
     }
 }
 
-http.createServer((req, res) => res.end("Bot Online")).listen(3000);
+http.createServer((req, res) => res.end("Bot Online")).listen(3000, '0.0.0.0', () => {
+    console.log("🌐 Servidor web ativo na porta 3000");
+});
 
 setTimeout(() => {
     console.log("🚀 [COMPRA REAL] A iniciar swap via Jupiter API...");
-    executarSwapJupiter("DezXAZ8z7Pnrnrajj3kGkrqiqWrHmzzmvp3DTgHjmJPE", true);
+    // Teste com USDC como token alvo tradável
+    executarSwapJupiter("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", true);
 }, 3000);
