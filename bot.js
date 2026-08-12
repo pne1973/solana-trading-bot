@@ -1,6 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
-const http = http = require('http');
+const http = require('http');
 const https = require('https');
 const axios = require('axios');
 const { Connection, Keypair, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
@@ -79,14 +79,12 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
 
         console.log("🔍 A obter cotação da Jupiter...");
         
-        // Utilizar múltiplos mirrors de API para evitar falhas de DNS no Codespace
-        let quoteRes;
+        let successData = null;
         const endpoints = [
             'https://quote-api.jup.ag/v6',
             'https://public.jupiterapi.com'
         ];
 
-        let successData = null;
         for (const ep of endpoints) {
             try {
                 const res = await axios.get(`${ep}/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { timeout: 5000 });
@@ -94,13 +92,11 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
                     successData = res.data;
                     break;
                 }
-            } catch (e) {
-                // Tenta o próximo endpoint
-            }
+            } catch (e) {}
         }
 
         if (!successData) {
-            throw new Error("Não foi possível obter cotação de nenhum endpoint da Jupiter (Erro de DNS/Rede).");
+            throw new Error("Não foi possível obter cotação de nenhum endpoint da Jupiter.");
         }
         
         console.log("🔄 A criar transação de swap...");
