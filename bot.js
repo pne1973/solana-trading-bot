@@ -1,14 +1,9 @@
 require('dotenv').config();
 const fs = require('fs');
-const http = require('http');
+const http = http = require('http');
 const https = require('https');
 const axios = require('axios');
-const dns = require('dns');
 const { Connection, Keypair, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
-
-try {
-    dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (e) {}
 
 const SNIPER_CONFIG = {
     LIVE_TRADING_ENABLED: true,  
@@ -84,31 +79,36 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
 
         console.log("🔍 A obter cotação da Jupiter...");
         
-        // Resolver IP estático via DNS lookup direto para evitar ENOTFOUND no Codespace
-        const ipAddress = await new Promise((resolve) => {
-            dns.lookup('quote-api.jup.ag', (err, address) => {
-                resolve(err ? null : address);
-            });
-        });
+        // Utilizar múltiplos mirrors de API para evitar falhas de DNS no Codespace
+        let quoteRes;
+        const endpoints = [
+            'https://quote-api.jup.ag/v6',
+            'https://public.jupiterapi.com'
+        ];
 
-        const hostUrl = ipAddress ? `https://${ipAddress}` : 'https://quote-api.jup.ag';
+        let successData = null;
+        for (const ep of endpoints) {
+            try {
+                const res = await axios.get(`${ep}/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { timeout: 5000 });
+                if (res && res.data) {
+                    successData = res.data;
+                    break;
+                }
+            } catch (e) {
+                // Tenta o próximo endpoint
+            }
+        }
 
-        const quoteRes = await axios.get(`${hostUrl}/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { 
-            timeout: 10000,
-            headers: { 'Host': 'quote-api.jup.ag', 'User-Agent': 'Mozilla/5.0' },
-            httpsAgent: new https.Agent({ rejectUnauthorized: false })
-        });
+        if (!successData) {
+            throw new Error("Não foi possível obter cotação de nenhum endpoint da Jupiter (Erro de DNS/Rede).");
+        }
         
         console.log("🔄 A criar transação de swap...");
-        const swapRes = await axios.post(`${hostUrl}/v6/swap`, {
-            quoteResponse: quoteRes.data,
+        const swapRes = await axios.post('https://quote-api.jup.ag/v6/swap', {
+            quoteResponse: successData,
             userPublicKey: walletKeypair.publicKey.toBase58(),
             wrapAndUnwrapSol: true
-        }, { 
-            timeout: 10000,
-            headers: { 'Host': 'quote-api.jup.ag', 'User-Agent': 'Mozilla/5.0' },
-            httpsAgent: new https.Agent({ rejectUnauthorized: false })
-        });
+        }, { timeout: 8000 });
 
         const transaction = VersionedTransaction.deserialize(Buffer.from(swapRes.data.swapTransaction, 'base64'));
         transaction.sign([walletKeypair]);
