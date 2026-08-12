@@ -979,5 +979,104 @@
     "finalValueSol": 0.0007394283897963429,
     "pnlPct": -26.06,
     "result": "STOP_LOSS"
+  },
+  {
+    "mint": "Live_3hSXawrd...",
+    "entryTime": "4:25:48 PM",
+    "exitTime": "4:26:03 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0007334107210051696,
+    "pnlPct": -26.66,
+    "result": "STOP_LOSS"
+  },
+  {
+    "mint": "Live_2TV54P8K...",
+    "entryTime": "4:26:06 PM",
+    "exitTime": "4:26:30 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.001809534956996146,
+    "pnlPct": 80.95,
+    "result": "TAKE_PROFIT"
+  },
+  {
+    "mint": "Live_5eoFJjVh...",
+    "entryTime": "4:26:30 PM",
+    "exitTime": "4:26:39 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0016240326826713087,
+    "pnlPct": 62.4,
+    "result": "TAKE_PROFIT"
+  },
+  {
+    "mint": "Live_5LiyovrD...",
+    "entryTime": "4:26:42 PM",
+    "exitTime": "4:26:45 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.00070579921402001,
+    "pnlPct": -29.42,
+    "result": "STOP_LOSS"
+  },
+  {
+    "mint": "Live_3fugGLkK...",
+    "entryTime": "4:26:48 PM",
+    "exitTime": "4:26:54 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.001735296022279626,
+    "pnlPct": 73.53,
+    "result": "TAKE_PROFIT"
+  },
+  {
+    "mint": "Live_4wxHwB6m...",
+    "entryTime": "4:26:54 PM",
+    "exitTime": "4:26:57 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0007484041195009172,
+    "pnlPct": -25.16,
+    "result": "STOP_LOSS"
+  },
+  {
+    "mint": "Live_QXMUh3va...",
+    "entryTime": "4:27:00 PM",
+    "exitTime": "4:27:27 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0007494129130531294,
+    "pnlPct": -25.06,
+    "result": "STOP_LOSS"
+  },
+  {
+    "mint": "Live_61p493wu...",
+    "entryTime": "4:27:30 PM",
+    "exitTime": "4:27:45 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0007207084157043763,
+    "pnlPct": -27.93,
+    "result": "STOP_LOSS"
+  },
+  {
+    "mint": "Live_4ytCDidy...",
+    "entryTime": "4:27:48 PM",
+    "exitTime": "4:28:00 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0015081020342906184,
+    "pnlPct": 50.81,
+    "result": "TAKE_PROFIT"
+  },
+  {
+    "mint": "Live_3FtSaQjh...",
+    "entryTime": "4:28:06 PM",
+    "exitTime": "4:28:12 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0015150804016756283,
+    "pnlPct": 51.51,
+    "result": "TAKE_PROFIT"
+  },
+  {
+    "mint": "Live_5n6wJSfG...",
+    "entryTime": "4:28:12 PM",
+    "exitTime": "4:28:27 PM",
+    "investedSol": 0.001,
+    "finalValueSol": 0.0017582316558179282,
+    "pnlPct": 75.82,
+    "result": "TAKE_PROFIT"
   }
 ]
