@@ -1,14 +1,13 @@
 require('dotenv').config();
 const fs = require('fs');
-const http = require('http');
+const http = http = require('http');
 const https = require('https');
-const { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, Transaction } = require('@solana/web3.js');
+const { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
 
-// Configurações de Produção e Gestão de Risco (Apex Social v33.12)
 const SNIPER_CONFIG = {
     LIVE_TRADING_ENABLED: true,  
     amountToInvestSol: 0.001,
-    maxAllowedSlippageBps: 500, // 5% de slippage tolerado
+    maxAllowedSlippageBps: 500,
     autoTakeProfitPct: 50,
     autoStopLossPct: -25,
     rpcEndpoint: process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com'
@@ -16,7 +15,6 @@ const SNIPER_CONFIG = {
 
 const connection = new Connection(SNIPER_CONFIG.rpcEndpoint, 'confirmed');
 
-// Carregar Carteira Dedicada de forma Segura a partir do .env
 let walletKeypair = null;
 try {
     if (process.env.WALLET_PRIVATE_KEY) {
@@ -24,17 +22,17 @@ try {
         walletKeypair = Keypair.fromSecretKey(secretKey);
         console.log(`🔐 Carteira carregada com sucesso: ${walletKeypair.publicKey.toBase58()}`);
     } else {
-        console.warn("⚠️ AVISO: WALLET_PRIVATE_KEY não encontrada no .env. O bot funcionará em modo restrito.");
+        console.warn("⚠️ AVISO: WALLET_PRIVATE_KEY não encontrada no .env.");
     }
 } catch (e) {
-    console.error("❌ Erro ao carregar a chave privada da carteira:", e.message);
+    console.error("❌ Erro ao carregar a chave privada:", e.message);
 }
 
 let activeSnipeTrade = null;
 const HISTORY_FILE = 'trades_history_real.json';
 
 let botStats = {
-    mode: SNIPER_CONFIG.LIVE_TRADING_ENABLED ? "LIVE TRADING REAL (Produção)" : "Modo Seguro / Protegido (Pre-Live)",
+    mode: SNIPER_CONFIG.LIVE_TRADING_ENABLED ? "LIVE TRADING REAL (Produção)" : "Modo Seguro",
     walletPublicKey: walletKeypair ? walletKeypair.publicKey.toBase58() : "Não configurada",
     totalScanned: 0,
     approvedTokens: 0,
@@ -47,7 +45,6 @@ let botStats = {
     history: []
 };
 
-// Sincronizar saldo real da carteira na blockchain
 async function atualizarSaldoReal() {
     if (!walletKeypair) return;
     try {
@@ -81,6 +78,54 @@ function salvarTradeNoHistorico(tradeData) {
     carregarHistorico();
 }
 
+// Função para executar Swap Real via Jupiter API v6
+async function executarSwapJupiter(outputMint, isBuy = true) {
+    if (!walletKeypair) return null;
+    try {
+        const inputMint = isBuy ? "So11111111111111111111111111111111111111112" : outputMint;
+        const targetMint = isBuy ? outputMint : "So11111111111111111111111111111111111111112";
+        const amount = isBuy ? Math.floor(SNIPER_CONFIG.amountToInvestSol * LAMPORTS_PER_SOL) : 1000000; // Ajustar conforme quantidade de tokens
+
+        // 1. Obter Cotação da Jupiter
+        const quoteRes = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`);
+        const quoteData = await quoteRes.json();
+        
+        if (!quoteData || quoteData.error) {
+            console.error("❌ Erro na cotação Jupiter:", quoteData.error || "Sem rota");
+            return null;
+        }
+
+        // 2. Obter Transação de Swap da Jupiter
+        const swapRes = await fetch('https://quote-api.jup.ag/v6/swap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                quoteResponse: quoteData,
+                userPublicKey: walletKeypair.publicKey.toBase58(),
+                wrapAndUnwrapSol: true
+            })
+        });
+        const swapData = await swapRes.json();
+
+        if (!swapData.swapTransaction) {
+            console.error("❌ Falha ao obter transação de swap da Jupiter.");
+            return null;
+        }
+
+        // 3. Assinar e Enviar Transação
+        const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
+        const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+        transaction.sign([walletKeypair]);
+
+        const txid = await connection.sendRawTransaction(transaction.serialize(), { skipPreflight: false, maxRetries: 3 });
+        console.log(`✅ Transação enviada com sucesso! TXID: https://solscan.io/tx/${txid}`);
+        return txid;
+    } catch (err) {
+        console.error("❌ Erro crítico ao executar swap:", err.message);
+        return null;
+    }
+}
+
 // Servidor Web para Monitorização em Tempo Real
 const server = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -93,109 +138,24 @@ const server = http.createServer((req, res) => {
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solana Real Sniper - Produção</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans min-h-screen pb-10">
-    <header class="bg-slate-900 border-b border-slate-800 p-4 shadow-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
-            <div class="flex items-center space-x-3">
-                <i class="fa-solid fa-shield-halved text-amber-400 text-xl"></i>
-                <h1 class="text-lg font-bold tracking-wide">Solana Real Sniper (Produção Rigorosa v33.12)</h1>
-            </div>
-            <div class="flex items-center space-x-2 bg-slate-800 px-3 py-1 rounded-full text-xs font-medium text-amber-400 border border-slate-700">
-                <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                <span id="modeStatus">Carregando modo...</span>
-            </div>
-        </div>
-    </header>
-
-    <main class="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Saldo Real da Carteira</p>
-                <h2 id="walletBalance" class="text-2xl font-extrabold mt-1 text-cyan-400">0.0000 SOL</h2>
-            </div>
-            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Lucro / Prejuízo Real</p>
-                <h2 id="netProfit" class="text-2xl font-extrabold mt-1 text-emerald-400">0.0000 SOL</h2>
-            </div>
-            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Total de Trades</p>
-                <h2 id="totalTrades" class="text-2xl font-extrabold mt-1 text-slate-100">0</h2>
-            </div>
-            <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow">
-                <p class="text-slate-400 text-xs uppercase font-semibold">Posição Ativa</p>
-                <div id="activeTradeBox" class="mt-1">
-                    <span class="text-xs font-bold text-slate-500">À espera de token...</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="bg-slate-900 border border-slate-800 rounded-xl shadow overflow-hidden">
-            <div class="p-4 border-b border-slate-800">
-                <h3 class="font-bold text-base flex items-center space-x-2">
-                    <i class="fa-solid fa-clock-rotate-left text-slate-400"></i>
-                    <span>Histórico de Execuções Reais</span>
-                </h3>
-            </div>
-            <div id="historyList" class="divide-y divide-slate-800">
-                <div class="p-4 text-center text-slate-500 text-sm">A escutar blocos da rede principal...</div>
-            </div>
-        </div>
-    </main>
-
+<body class="bg-slate-950 text-slate-100 font-sans p-6">
+    <h1 class="text-xl font-bold mb-4">Solana Real Sniper v33.12 (Jupiter Integration)</h1>
+    <div class="bg-slate-900 p-4 rounded">
+        <p>Saldo: <span id="bal" class="text-cyan-400">0 SOL</span></p>
+        <p>Lucro: <span id="prof" class="text-emerald-400">0 SOL</span></p>
+    </div>
     <script>
-        async function fetchStats() {
-            try {
-                const response = await fetch('/api/stats');
-                const data = await response.json();
-
-                document.getElementById('modeStatus').innerText = data.mode;
-                document.getElementById('walletBalance').innerText = \`\${data.realWalletBalanceSol.toFixed(4)} SOL\`;
-                document.getElementById('netProfit').innerText = \`\${data.netProfitSol >= 0 ? '+' : ''}\${data.netProfitSol.toFixed(4)} SOL\`;
-                document.getElementById('netProfit').className = \`text-2xl font-extrabold mt-1 \${data.netProfitSol >= 0 ? 'text-emerald-400' : 'text-rose-400'}\`;
-                document.getElementById('totalTrades').innerText = data.totalTrades;
-
-                const activeBox = document.getElementById('activeTradeBox');
-                if (data.activeTrade) {
-                    const pnlColor = data.activeTrade.pnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400';
-                    activeBox.innerHTML = \`
-                        <div class="text-xs font-mono text-cyan-400 truncate">\${data.activeTrade.mint}</div>
-                        <div class="text-xs \${pnlColor} font-bold mt-1">PnL: \${data.activeTrade.pnlPct}%</div>
-                    \`;
-                } else {
-                    activeBox.innerHTML = '<span class="text-xs font-medium text-slate-500">Nenhuma posição ativa</span>';
-                }
-
-                const container = document.getElementById('historyList');
-                if (data.history && data.history.length > 0) {
-                    container.innerHTML = data.history.slice().reverse().map(trade => {
-                        const isWin = trade.result === 'TAKE_PROFIT';
-                        const badgeColor = isWin ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                        const pnlColor = trade.pnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400';
-                        return \`
-                            <div class="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 hover:bg-slate-800/30 transition-colors">
-                                <div>
-                                    <div class="font-mono text-xs text-cyan-300 font-bold">\${trade.mint}</div>
-                                    <div class="text-xs text-slate-400 mt-0.5">Entrada: \${trade.entryTime} | Inv: \${trade.investedSol} SOL</div>
-                                </div>
-                                <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                                    <span class="text-sm font-bold \${pnlColor}">\${trade.pnlPct >= 0 ? '+' : ''}\${trade.pnlPct}%</span>
-                                    <span class="px-2 py-0.5 rounded text-xs font-semibold border \${badgeColor}">\${trade.result}</span>
-                                </div>
-                            </div>
-                        \`;
-                    }).join('');
-                } else {
-                    container.innerHTML = \`<div class="p-6 text-center text-slate-500 text-sm">A aguardar oportunidades de mercado reais...</div>\`;
-                }
-            } catch (err) {}
+        async function update() {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            document.getElementById('bal').innerText = data.realWalletBalanceSol + ' SOL';
+            document.getElementById('prof').innerText = data.netProfitSol + ' SOL';
         }
-        setInterval(fetchStats, 2000);
-        fetchStats();
+        setInterval(update, 2000);
+        update();
     </script>
 </body>
 </html>`);
@@ -206,99 +166,51 @@ server.listen(3000, '0.0.0.0', () => {
     console.log("🌐 Painel de Produção ativo em: http://0.0.0.0:3000");
 });
 
-// Escuta em tempo real do contrato oficial do Pump.fun na blockchain da Solana
 function monitorizarMercadoReal() {
     const PUMP_FUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-    
     const data = JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getSignaturesForAddress",
-        params: [PUMP_FUN_PROGRAM_ID, { limit: 3 }]
+        jsonrpc: "2.0", id: 1, method: "getSignaturesForAddress", params: [PUMP_FUN_PROGRAM_ID, { limit: 1 }]
     });
 
     const req = https.request({
         hostname: new URL(SNIPER_CONFIG.rpcEndpoint).hostname,
-        path: new URL(SNIPER_CONFIG.rpcEndpoint).pathname + (new URL(SNIPER_CONFIG.rpcEndpoint).search || ''),
+        path: new URL(SNIPER_CONFIG.rpcEndpoint).pathname,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Content-Length': data.length }
     }, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
-        res.on('end', () => {
+        res.on('end', async () => {
             try {
                 const response = JSON.parse(body);
-                if (response.result && Array.isArray(response.result)) {
-                    botStats.totalScanned += response.result.length;
-                    const ultimaTx = response.result[0];
-                    const tokenMintReal = "Live_" + ultimaTx.signature.substring(0, 8) + "...";
+                if (response.result && response.result.length > 0) {
+                    botStats.totalScanned++;
+                    const tokenMintReal = "So11111111111111111111111111111111111111112"; // Substituir pelo mint detetado
 
                     if (!activeSnipeTrade && botStats.realWalletBalanceSol >= SNIPER_CONFIG.amountToInvestSol) {
-                        const jaExiste = botStats.history.some(t => t.mint === tokenMintReal);
-                        if (!jaExiste) {
-                            botStats.approvedTokens++;
-                            
-                            if (SNIPER_CONFIG.LIVE_TRADING_ENABLED) {
-                                console.log(`🚀 [EXECUÇÃO REAL] A comprar token via Jupiter/Raydium: ${tokenMintReal}`);
-                            } else {
-                                console.log(`🛡️ [MODO SEGURO] Oportunidade detetada, mas live trading desativado: ${tokenMintReal}`);
-                            }
-
-                            activeSnipeTrade = {
-                                mint: tokenMintReal,
-                                investedSol: SNIPER_CONFIG.amountToInvestSol,
-                                currentValueSol: SNIPER_CONFIG.amountToInvestSol,
-                                pnlPct: 0,
-                                entryTime: new Date().toLocaleTimeString()
-                            };
-                            botStats.activeTrade = activeSnipeTrade;
+                        if (SNIPER_CONFIG.LIVE_TRADING_ENABLED) {
+                            console.log(`🚀 [COMPRA REAL] A iniciar swap via Jupiter API...`);
+                            await executarSwapJupiter(tokenMintReal, true);
                         }
+
+                        activeSnipeTrade = {
+                            mint: tokenMintReal,
+                            investedSol: SNIPER_CONFIG.amountToInvestSol,
+                            currentValueSol: SNIPER_CONFIG.amountToInvestSol,
+                            pnlPct: 0,
+                            entryTime: new Date().toLocaleTimeString()
+                        };
+                        botStats.activeTrade = activeSnipeTrade;
                     }
                 }
             } catch (e) {}
         });
     });
-    req.on('error', () => {});
     req.write(data);
     req.end();
 }
 
-// Ciclos de execução e verificação de risco
 setInterval(atualizarSaldoReal, 10000);
-setInterval(monitorizarMercadoReal, 6000);
-
-setInterval(() => {
-    carregarHistorico();
-    atualizarSaldoReal();
-    if (activeSnipeTrade) {
-        const variacao = (Math.random() * 60 - 27); 
-        activeSnipeTrade.currentValueSol *= (1 + variacao / 100);
-
-        const pnl = ((activeSnipeTrade.currentValueSol - activeSnipeTrade.investedSol) / activeSnipeTrade.investedSol) * 100;
-        activeSnipeTrade.pnlPct = Number(pnl.toFixed(2));
-        botStats.activeTrade = activeSnipeTrade;
-
-        if (pnl >= SNIPER_CONFIG.autoTakeProfitPct || pnl <= SNIPER_CONFIG.autoStopLossPct) {
-            const resultado = pnl >= SNIPER_CONFIG.autoTakeProfitPct ? "TAKE_PROFIT" : "STOP_LOSS";
-            
-            if (SNIPER_CONFIG.LIVE_TRADING_ENABLED) {
-                console.log(`💰 [VENDA REAL] A fechar posição (${resultado}) para o token ${activeSnipeTrade.mint}`);
-            }
-
-            salvarTradeNoHistorico({
-                mint: activeSnipeTrade.mint,
-                entryTime: activeSnipeTrade.entryTime,
-                exitTime: new Date().toLocaleTimeString(),
-                investedSol: activeSnipeTrade.investedSol,
-                finalValueSol: activeSnipeTrade.currentValueSol,
-                pnlPct: activeSnipeTrade.pnlPct,
-                result: resultado
-            });
-            activeSnipeTrade = null;
-            botStats.activeTrade = null;
-        }
-    }
-}, 3000);
-
+setInterval(monitorizarMercadoReal, 10000);
 carregarHistorico();
 atualizarSaldoReal();
