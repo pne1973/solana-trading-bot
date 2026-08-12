@@ -2,7 +2,15 @@ require('dotenv').config();
 const fs = require('fs');
 const http = require('http');
 const axios = require('axios');
+const dns = require('dns');
 const { Connection, Keypair, LAMPORTS_PER_SOL, VersionedTransaction } = require('@solana/web3.js');
+
+// Forçar o uso de servidores DNS públicos para evitar falhas de resolução no Codespace
+try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+    // Ignorar se não suportado
+}
 
 const SNIPER_CONFIG = {
     LIVE_TRADING_ENABLED: true,  
@@ -23,22 +31,15 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
         const targetMint = isBuy ? outputMint : "So11111111111111111111111111111111111111112";
         const amount = Math.floor(SNIPER_CONFIG.amountToInvestSol * LAMPORTS_PER_SOL);
 
-        console.log("🔍 A tentar obter cotação...");
-        
-        let quoteRes;
-        try {
-            quoteRes = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { timeout: 5000 });
-        } catch (dnsErr) {
-            console.warn("⚠️ DNS direto falhou, a tentar endpoint alternativo...");
-            quoteRes = await axios.get(`https://public.jupiterapi.com/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { timeout: 5000 });
-        }
+        console.log("🔍 A obter cotação da Jupiter...");
+        const quoteRes = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { timeout: 7000 });
         
         console.log("🔄 A criar transação de swap...");
         const swapRes = await axios.post('https://quote-api.jup.ag/v6/swap', {
             quoteResponse: quoteRes.data,
             userPublicKey: walletKeypair.publicKey.toBase58(),
             wrapAndUnwrapSol: true
-        }, { timeout: 5000 });
+        }, { timeout: 7000 });
 
         const transaction = VersionedTransaction.deserialize(Buffer.from(swapRes.data.swapTransaction, 'base64'));
         transaction.sign([walletKeypair]);
@@ -56,6 +57,5 @@ http.createServer((req, res) => res.end("Bot Online")).listen(3000, '0.0.0.0', (
 
 setTimeout(() => {
     console.log("🚀 [COMPRA REAL] A iniciar swap via Jupiter API...");
-    // Teste com USDC como token alvo tradável
     executarSwapJupiter("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", true);
 }, 3000);
