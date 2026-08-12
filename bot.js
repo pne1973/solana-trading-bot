@@ -84,30 +84,30 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
 
         console.log("🔍 A obter cotação da Jupiter...");
         
-        // Configurar agente HTTPS com suporte a keepAlive e resolução forçada
-        const httpsAgent = new https.Agent({ keepAlive: true });
-        
-        let quoteRes;
-        try {
-            quoteRes = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { 
-                timeout: 10000,
-                httpsAgent 
+        // Resolver IP estático via DNS lookup direto para evitar ENOTFOUND no Codespace
+        const ipAddress = await new Promise((resolve) => {
+            dns.lookup('quote-api.jup.ag', (err, address) => {
+                resolve(err ? null : address);
             });
-        } catch (errApi) {
-            console.warn("⚠️ Falha na API principal, a tentar rota pública secundária...");
-            quoteRes = await axios.get(`https://public.jupiterapi.com/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { 
-                timeout: 10000 
-            });
-        }
+        });
+
+        const hostUrl = ipAddress ? `https://${ipAddress}` : 'https://quote-api.jup.ag';
+
+        const quoteRes = await axios.get(`${hostUrl}/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { 
+            timeout: 10000,
+            headers: { 'Host': 'quote-api.jup.ag', 'User-Agent': 'Mozilla/5.0' },
+            httpsAgent: new https.Agent({ rejectUnauthorized: false })
+        });
         
         console.log("🔄 A criar transação de swap...");
-        const swapRes = await axios.post('https://quote-api.jup.ag/v6/swap', {
+        const swapRes = await axios.post(`${hostUrl}/v6/swap`, {
             quoteResponse: quoteRes.data,
             userPublicKey: walletKeypair.publicKey.toBase58(),
             wrapAndUnwrapSol: true
         }, { 
             timeout: 10000,
-            httpsAgent 
+            headers: { 'Host': 'quote-api.jup.ag', 'User-Agent': 'Mozilla/5.0' },
+            httpsAgent: new https.Agent({ rejectUnauthorized: false })
         });
 
         const transaction = VersionedTransaction.deserialize(Buffer.from(swapRes.data.swapTransaction, 'base64'));
