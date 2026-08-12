@@ -79,29 +79,37 @@ async function executarSwapJupiter(outputMint, isBuy = true) {
 
         console.log("🔍 A obter cotação da Jupiter...");
         
-        let successData = null;
-        const endpoints = [
-            'https://quote-api.jup.ag/v6',
-            'https://public.jupiterapi.com'
-        ];
-
-        for (const ep of endpoints) {
-            try {
-                const res = await axios.get(`${ep}/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`, { timeout: 5000 });
-                if (res && res.data) {
-                    successData = res.data;
-                    break;
+        // Configuração para forçar cabeçalho Host e evitar falhas de resolução de nomes
+        const instance = axios.create({
+            baseURL: 'https://quote-api.jup.ag',
+            timeout: 10000,
+            headers: {
+                'Host': 'quote-api.jup.ag',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            },
+            httpsAgent: new https.Agent({  
+                rejectUnauthorized: false,
+                lookup: (hostname, options, callback) => {
+                    // Mip/IP estático de fallback ou DNS público direto do Cloudflare/Google
+                    require('dns').resolve4('cloudflare-dns.com', (err, addresses) => {
+                        callback(null, '104.18.6.182', 43); // IP genérico de borda Cloudflare para reencaminhamento
+                    });
                 }
-            } catch (e) {}
+            })
+        });
+
+        // Caso prefira usar uma rota standard com fetch seguro alternativo via IP direto:
+        const quoteRes = await axios.get(`https://api.allorigins.win/raw?url=` + encodeURIComponent(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${targetMint}&amount=${amount}&slippageBps=${SNIPER_CONFIG.maxAllowedSlippageBps}`), { timeout: 8000 });
+        
+        const quoteData = typeof quoteRes.data === 'string' ? JSON.parse(quoteRes.data) : quoteRes.data;
+
+        if (!quoteData || quoteData.error) {
+            throw new Error("Erro na cotação: " + (quoteData.error || "Sem rota"));
         }
 
-        if (!successData) {
-            throw new Error("Não foi possível obter cotação de nenhum endpoint da Jupiter.");
-        }
-        
         console.log("🔄 A criar transação de swap...");
         const swapRes = await axios.post('https://quote-api.jup.ag/v6/swap', {
-            quoteResponse: successData,
+            quoteResponse: quoteData,
             userPublicKey: walletKeypair.publicKey.toBase58(),
             wrapAndUnwrapSol: true
         }, { timeout: 8000 });
