@@ -4,11 +4,13 @@
   "description": "Um bot simples de trading automatizado na rede Solana",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "check": "node --check bot.js"
   },
   "dependencies": {
     "@solana/spl-token": "^0.3.9",
     "@solana/web3.js": "^1.98.4",
+    "axios": "^1.11.0",
     "bip39": "^3.1.0",
     "dotenv": "^16.6.1",
     "ed25519-hd-key": "^2.0.0"
